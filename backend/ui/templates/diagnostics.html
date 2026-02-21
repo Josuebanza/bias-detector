@@ -23,6 +23,7 @@
       <div class="nb-nav-links ms-3 d-none d-md-flex">
         <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
         <a class="nav-link-nb {% if page == 'diagnostics' %}active{% endif %}" href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>
+        <a class="nav-link-nb {% if page == 'simulator' %}active{% endif %}" href="{% url 'simulator' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Simulator</a>
       </div>
       <div class="ms-auto d-flex gap-2 align-items-center">
         <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
@@ -43,94 +44,60 @@
       </div>
     {% else %}
       <section class="nb-hero nb-hero-compact mb-4">
-        <div class="hero-kicker">Diagnostics</div>
-        <h1 class="hero-title">Advanced Behavioral Diagnostics</h1>
-        <p class="hero-subtitle">Heatmap, data quality and expanded bias coverage for batch {{ batch_id }}</p>
+        <div class="hero-kicker">Diagnostics Lab</div>
+        <h1 class="hero-title">Behavioral Diagnostics Deep Dive</h1>
+        <p class="hero-subtitle">Quality controls, market-timing structure and bias signal internals for batch {{ batch_id }}.</p>
       </section>
 
       <div class="row g-4 mb-4">
-        <div class="col-lg-6">
+        <div class="col-lg-5">
           <div class="card nb-card h-100">
             <div class="card-body">
-              <h2 class="section-title mb-3">Risk Profile</h2>
-              <div class="risk-grid">
-                <div class="risk-item">
-                  <div class="risk-label">Profile</div>
-                  <div class="risk-value">{{ risk_profile.level|default:"BALANCED" }}</div>
-                </div>
-                <div class="risk-item">
-                  <div class="risk-label">Score</div>
-                  <div class="risk-value">{{ risk_profile.score|default:0|floatformat:1 }}</div>
-                </div>
-                <div class="risk-item">
-                  <div class="risk-label">Max Drawdown</div>
-                  <div class="risk-value">{{ risk_profile.max_drawdown_pct|default:0|floatformat:1 }}%</div>
-                </div>
-                <div class="risk-item">
-                  <div class="risk-label">P/L Volatility</div>
-                  <div class="risk-value">{{ risk_profile.pnl_volatility|default:0|floatformat:2 }}</div>
-                </div>
-                <div class="risk-item">
-                  <div class="risk-label">Win Rate</div>
-                  <div class="risk-value">{{ risk_profile.win_rate|default:0|floatformat:1 }}%</div>
-                </div>
-                <div class="risk-item">
-                  <div class="risk-label">Profit Factor</div>
-                  <div class="risk-value">{{ risk_profile.profit_factor|default:0|floatformat:2 }}</div>
-                </div>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="section-title mb-0">Data Quality</h2>
+                <span class="section-meta">Integrity checks</span>
               </div>
-
-              <div class="risk-bars mt-3">
-                <div class="metric-line">
-                  <span>Stability</span>
-                  <span>{{ risk_profile.stability|default:0|floatformat:1 }}</span>
-                </div>
-                <div class="bias-track"><div class="bias-fill bias-low" style="width: {{ risk_profile.stability|default:0 }}%"></div></div>
-
-                <div class="metric-line mt-2">
-                  <span>Drawdown Resilience</span>
-                  <span>{{ risk_profile.drawdown_resilience|default:0|floatformat:1 }}</span>
-                </div>
-                <div class="bias-track"><div class="bias-fill bias-medium" style="width: {{ risk_profile.drawdown_resilience|default:0 }}%"></div></div>
-
-                <div class="metric-line mt-2">
-                  <span>Consistency</span>
-                  <span>{{ risk_profile.consistency|default:0|floatformat:1 }}</span>
-                </div>
-                <div class="bias-track"><div class="bias-fill bias-high" style="width: {{ risk_profile.consistency|default:0 }}%"></div></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-6">
-          <div class="card nb-card h-100">
-            <div class="card-body">
-              <h2 class="section-title mb-3">Data Quality</h2>
               <div class="quality-list">
                 <div class="quality-item"><span>Duplicate rows</span><b>{{ data_quality.duplicate_count }}</b></div>
                 <div class="quality-item"><span>Large time gaps</span><b>{{ data_quality.large_gap_count }}</b></div>
                 <div class="quality-item"><span>Median gap (min)</span><b>{{ data_quality.median_gap_min|floatformat:2 }}</b></div>
-                <div class="quality-item"><span>Gap alert threshold (min)</span><b>{{ data_quality.gap_threshold_min|floatformat:2 }}</b></div>
-                <div class="quality-item"><span>Non-positive balance points</span><b>{{ data_quality.non_positive_balance_count }}</b></div>
+                <div class="quality-item"><span>Gap threshold (min)</span><b>{{ data_quality.gap_threshold_min|floatformat:2 }}</b></div>
+                <div class="quality-item"><span>Non-positive balances</span><b>{{ data_quality.non_positive_balance_count }}</b></div>
                 <div class="quality-item"><span>Flat balance rate</span><b>{{ data_quality.flat_balance_rate|floatformat:2 }}%</b></div>
               </div>
-              <p class="small text-muted mt-3 mb-0">These checks help identify preprocessing issues and suspicious timeline artifacts.</p>
+              <p class="small text-muted mt-3 mb-0">Use this panel to validate import quality before interpreting bias scores.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-7">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <h2 class="section-title mb-0">Execution Cadence</h2>
+                <span class="section-meta">Per hour timeline</span>
+              </div>
+              <div class="viz-frame-half mt-3">
+                <canvas id="diagHourlyChart"></canvas>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="small text-muted">Session window: {{ start_display }} - {{ end_display }}</div>
+                <div class="small text-muted">{{ n_trades }} trades</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div class="row g-4 mb-4">
-        <div class="col-12">
-          <div class="card nb-card">
+        <div class="col-lg-8">
+          <div class="card nb-card h-100">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center mb-3">
                 <h2 class="section-title mb-0">Trading Heatmap</h2>
-                <span class="section-meta">Day of week x hour of day</span>
+                <span class="section-meta">Day of week x hour</span>
               </div>
-
-              <div class="heatmap-wrap">
+              <div class="heatmap-wrap table-scroll-half">
                 <table class="heat-table">
                   <thead>
                     <tr>
@@ -155,13 +122,27 @@
             </div>
           </div>
         </div>
+
+        <div class="col-lg-4">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <h2 class="section-title mb-0">Gap Structure</h2>
+                <span class="section-meta">Inter-trade delay</span>
+              </div>
+              <div class="viz-frame-half mt-3">
+                <canvas id="diagGapChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="row g-4 mb-4">
         <div class="col-lg-6">
           <div class="card nb-card h-100">
             <div class="card-body">
-              <h2 class="section-title mb-3">Best Trading Hours</h2>
+              <h2 class="section-title mb-2">Best Trading Hours</h2>
               <p class="small text-muted">Filtered with at least {{ min_trades_threshold }} trades.</p>
               <div class="hour-list">
                 {% for row in best_hours %}
@@ -183,7 +164,7 @@
         <div class="col-lg-6">
           <div class="card nb-card h-100">
             <div class="card-body">
-              <h2 class="section-title mb-3">Weakest Trading Hours</h2>
+              <h2 class="section-title mb-2">Weakest Trading Hours</h2>
               <p class="small text-muted">Filtered with at least {{ min_trades_threshold }} trades.</p>
               <div class="hour-list">
                 {% for row in worst_hours %}
@@ -207,27 +188,35 @@
         <div class="col-12">
           <div class="card nb-card">
             <div class="card-body">
-              <h2 class="section-title mb-3">Extended Bias Coverage</h2>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="section-title mb-0">Bias Signal Drilldown</h2>
+                <span class="section-meta">Raw indicators behind each score</span>
+              </div>
               <div class="row g-3">
-                {% for card in extended_bias_cards %}
-                {% with b=card.bias %}
-                {% with lvl=b.level|default:'LOW' %}
-                  <div class="col-lg-4 col-md-6">
-                    <div class="safeguard-card h-100">
-                      <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="fw-semibold"><i class="bi {{ card.icon }} me-1"></i>{{ card.label }}</div>
-                        <span class="state-badge state-{{ lvl|lower }}">
-                          {% if lvl == "LOW" %}Controlled{% elif lvl == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
+                {% for card in bias_signal_cards %}
+                <div class="col-xl-4 col-md-6">
+                  <div class="diagnostic-bias-card h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div class="fw-semibold"><i class="bi {{ card.icon }} me-1"></i>{{ card.label }}</div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="state-badge state-{{ card.level|lower }}">
+                          {% if card.level == "LOW" %}Controlled{% elif card.level == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
                         </span>
+                        <span class="bias-score">{{ card.score|floatformat:1 }}</span>
                       </div>
-                      <div class="small mb-2">Score: <b>{{ b.score|default:0|floatformat:1 }}</b></div>
-                      {% if b.tips and b.tips.0 %}
-                        <div class="small text-muted">{{ b.tips.0 }}</div>
-                      {% endif %}
+                    </div>
+                    <div class="signal-table">
+                      {% for signal in card.signals %}
+                      <div class="signal-row">
+                        <span class="signal-metric">{{ signal.metric|title }}</span>
+                        <b>{{ signal.value }}</b>
+                      </div>
+                      {% empty %}
+                      <div class="small text-muted">No signal details available.</div>
+                      {% endfor %}
                     </div>
                   </div>
-                {% endwith %}
-                {% endwith %}
+                </div>
                 {% endfor %}
               </div>
             </div>
@@ -239,17 +228,110 @@
 
   {% if not empty %}
     {{ heatmap_max|json_script:"heatmapMax" }}
+    {{ diag_hourly_labels|json_script:"diagHourlyLabels" }}
+    {{ diag_hourly_values|json_script:"diagHourlyValues" }}
+    {{ diag_gap_labels|json_script:"diagGapLabels" }}
+    {{ diag_gap_values|json_script:"diagGapValues" }}
   {% endif %}
 
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
+    function elJson(id){ return JSON.parse(document.getElementById(id).textContent); }
+
     {% if not empty %}
-    const heatmapMax = JSON.parse(document.getElementById("heatmapMax").textContent) || 1;
+    const heatmapMax = elJson("heatmapMax") || 1;
     document.querySelectorAll(".heat-cell").forEach((cell) => {
       const value = Number.parseFloat(cell.dataset.value || "0") || 0;
       const ratio = Math.max(0, Math.min(1, value / heatmapMax));
-      const alpha = 0.08 + ratio * 0.82;
+      const alpha = 0.10 + ratio * 0.80;
       cell.style.backgroundColor = `rgba(225, 37, 27, ${alpha.toFixed(3)})`;
-      cell.style.color = ratio > 0.58 ? "#fff" : "#111";
+      cell.style.color = ratio > 0.55 ? "#fff" : "#111";
+    });
+
+    const hourLabelsRaw = elJson("diagHourlyLabels");
+    const hourValues = elJson("diagHourlyValues");
+    const gapLabels = elJson("diagGapLabels");
+    const gapValues = elJson("diagGapValues");
+
+    const fmtDate = new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const hourLabels = hourLabelsRaw.map((v) => {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return v;
+      return fmtDate.format(d);
+    });
+
+    const colors = {
+      red: "#E1251B",
+      dark: "#111111",
+      axis: "#6B7280",
+      grid: "rgba(17, 17, 17, 0.08)",
+      tooltipBg: "#111111",
+      tooltipBorder: "#2B2B2B",
+    };
+
+    const commonOpts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: colors.tooltipBg,
+          borderColor: colors.tooltipBorder,
+          borderWidth: 1,
+          titleColor: "#F9FAFB",
+          bodyColor: "#F9FAFB",
+          padding: 10,
+          displayColors: false,
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: colors.axis, maxTicksLimit: 8 } },
+        y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.axis, maxTicksLimit: 6 } }
+      }
+    };
+
+    new Chart(document.getElementById("diagHourlyChart"), {
+      type: "line",
+      data: {
+        labels: hourLabels,
+        datasets: [{
+          label: "Trades per hour",
+          data: hourValues,
+          borderColor: colors.dark,
+          backgroundColor: "rgba(17, 17, 17, 0.08)",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.25,
+          fill: true,
+        }]
+      },
+      options: commonOpts
+    });
+
+    new Chart(document.getElementById("diagGapChart"), {
+      type: "bar",
+      data: {
+        labels: gapLabels,
+        datasets: [{
+          data: gapValues,
+          backgroundColor: ["rgba(17,17,17,0.82)", "rgba(80,80,80,0.80)", "rgba(130,130,130,0.80)", "rgba(225,37,27,0.88)"],
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        ...commonOpts,
+        scales: {
+          x: { grid: { display: false }, ticks: { color: colors.axis } },
+          y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.axis, precision: 0 } }
+        }
+      }
     });
     {% endif %}
   </script>

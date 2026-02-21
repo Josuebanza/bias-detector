@@ -1,0 +1,488 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bias Detector Simulator</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body class="nb-body">
+  <nav class="navbar navbar-expand-lg nb-nav">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">
+        <span class="brand-dot"></span> Bias Detector
+      </a>
+      <div class="nb-nav-links ms-3 d-none d-md-flex">
+        <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
+        <a class="nav-link-nb {% if page == 'diagnostics' %}active{% endif %}" href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>
+        <a class="nav-link-nb {% if page == 'simulator' %}active{% endif %}" href="{% url 'simulator' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Simulator</a>
+      </div>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
+        <a class="btn btn-sm btn-nb-secondary" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
+          API <i class="bi bi-box-arrow-up-right ms-1"></i>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    {% if empty %}
+      <div class="card nb-card">
+        <div class="card-body p-4 text-center">
+          <h1 class="section-title mb-2">Live Simulator</h1>
+          <p class="text-muted mb-0">Upload a dataset on the Overview page to start simulation.</p>
+        </div>
+      </div>
+    {% else %}
+      <section class="nb-hero nb-hero-compact mb-4">
+        <div class="hero-kicker">Preparation Sprint 4</div>
+        <h1 class="hero-title">Real-Time Behavioral Simulator</h1>
+        <p class="hero-subtitle">Replay your session and surface early warnings before behavior drifts into high-risk zones.</p>
+      </section>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <h2 class="section-title mb-0">Live Replay</h2>
+                <div class="d-flex gap-2">
+                  <button id="simStartBtn" class="btn btn-sm btn-nb-primary"><i class="bi bi-play-fill"></i> Start</button>
+                  <button id="simPauseBtn" class="btn btn-sm btn-outline-dark"><i class="bi bi-pause-fill"></i> Pause</button>
+                  <button id="simResetBtn" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <span class="section-meta">Speed</span>
+                <div id="speedControl" class="speed-pills">
+                  <button class="speed-pill is-active" data-speed="1">x1</button>
+                  <button class="speed-pill" data-speed="2">x2</button>
+                  <button class="speed-pill" data-speed="4">x4</button>
+                </div>
+                <span class="small text-muted ms-2">Window: {{ start_display }} - {{ end_display }} ({{ n_trades }} trades)</span>
+              </div>
+
+              <div class="viz-frame-half">
+                <canvas id="simPnlChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Behavior Drift Radar</h2>
+
+              <div class="sim-metric" data-key="overtrading">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span>Overtrading Pressure</span>
+                  <b class="sim-metric-value">0.0</b>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+                <div class="sim-metric-state small mt-1">Controlled</div>
+              </div>
+
+              <div class="sim-metric" data-key="revenge_trading">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span>Revenge Pressure</span>
+                  <b class="sim-metric-value">0.0</b>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+                <div class="sim-metric-state small mt-1">Controlled</div>
+              </div>
+
+              <div class="sim-metric" data-key="loss_aversion">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span>Loss Aversion Pressure</span>
+                  <b class="sim-metric-value">0.0</b>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+                <div class="sim-metric-state small mt-1">Controlled</div>
+              </div>
+
+              <hr class="my-3">
+              <div class="small text-muted mb-1">Baseline from current batch</div>
+              <div class="d-flex flex-wrap gap-2">
+                <span class="sim-chip">Overtrading: {{ sim_baseline_scores.overtrading|floatformat:1 }}</span>
+                <span class="sim-chip">Revenge: {{ sim_baseline_scores.revenge_trading|floatformat:1 }}</span>
+                <span class="sim-chip">Loss aversion: {{ sim_baseline_scores.loss_aversion|floatformat:1 }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3 class="section-title mb-0">Live Alerts</h3>
+                <span class="section-meta">Preventive guidance</span>
+              </div>
+              <div id="simAlerts" class="sim-alerts"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3 class="section-title mb-0">Active Guidance</h3>
+                <span class="section-meta">What to do now</span>
+              </div>
+              <div class="sim-watch-list">
+                {% for item in sim_watch_tips %}
+                <div class="sim-watch-card">
+                  <div class="fw-semibold mb-1">{{ item.title }}</div>
+                  <div class="small text-muted">{{ item.tip }}</div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-12">
+          <div class="card nb-card">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="section-title mb-0">Execution Tape</h3>
+                <span class="section-meta">Latest streamed trades</span>
+              </div>
+              <div class="table-responsive table-scroll-half">
+                <table class="table table-sm align-middle mb-0 sim-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Asset</th>
+                      <th>Side</th>
+                      <th class="text-end">P/L</th>
+                      <th class="text-end">Balance</th>
+                      <th class="text-end">Notional</th>
+                    </tr>
+                  </thead>
+                  <tbody id="liveTapeBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </main>
+
+  {% if not empty %}
+    {{ sim_stream_rows|json_script:"simStreamRows" }}
+    {{ sim_thresholds|json_script:"simThresholds" }}
+    {{ sim_baseline_scores|json_script:"simBaselineScores" }}
+  {% endif %}
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    function elJson(id){ return JSON.parse(document.getElementById(id).textContent); }
+    function clamp(v, lo = 0, hi = 100){ return Math.max(lo, Math.min(hi, v)); }
+    function fmtNum(v, d = 2){ return Number(v).toFixed(d); }
+
+    {% if not empty %}
+    const streamRows = elJson("simStreamRows");
+    const thresholds = elJson("simThresholds");
+    const baselineScores = elJson("simBaselineScores");
+
+    const colors = {
+      red: "#E1251B",
+      dark: "#111111",
+      axis: "#6B7280",
+      grid: "rgba(17, 17, 17, 0.08)",
+      tooltipBg: "#111111",
+      tooltipBorder: "#2B2B2B",
+      warn: "#B45309",
+    };
+
+    const fmtTime = new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+
+    const chart = new Chart(document.getElementById("simPnlChart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          borderColor: colors.dark,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.25,
+          fill: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            titleColor: "#F9FAFB",
+            bodyColor: "#F9FAFB",
+            padding: 10,
+            displayColors: false,
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: colors.axis, maxTicksLimit: 10 } },
+          y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.axis, maxTicksLimit: 6 } }
+        }
+      }
+    });
+
+    const state = {
+      idx: 0,
+      speed: 1,
+      timer: null,
+      running: false,
+      cumulative: 0,
+      history: [],
+      tape: [],
+      alerts: [],
+    };
+
+    const startBtn = document.getElementById("simStartBtn");
+    const pauseBtn = document.getElementById("simPauseBtn");
+    const resetBtn = document.getElementById("simResetBtn");
+    const tapeBody = document.getElementById("liveTapeBody");
+    const alertsRoot = document.getElementById("simAlerts");
+
+    function restartTimer(){
+      if (state.timer) clearInterval(state.timer);
+      if (!state.running) return;
+      const ms = Math.max(120, Math.round(900 / state.speed));
+      state.timer = setInterval(stepReplay, ms);
+    }
+
+    function setRunning(run){
+      state.running = run;
+      restartTimer();
+    }
+
+    function median(values){
+      if (!values.length) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    function lossStreak(history){
+      let streak = 0;
+      for (let i = history.length - 1; i >= 0; i -= 1){
+        if (history[i].pnl < 0) streak += 1;
+        else break;
+      }
+      return streak;
+    }
+
+    function evaluatePressures(current){
+      const hist = state.history;
+      const now = current.ts.getTime();
+      const last15 = hist.filter((x) => (now - x.ts.getTime()) <= 15 * 60 * 1000);
+
+      let switching = 0;
+      for (let i = 1; i < last15.length; i += 1){
+        const prev = last15[i - 1];
+        const cur = last15[i];
+        const dtMin = (cur.ts.getTime() - prev.ts.getTime()) / 60000;
+        if (dtMin <= 3 && (cur.asset !== prev.asset || cur.side !== prev.side)) switching += 1;
+      }
+      const switchRate = last15.length > 1 ? (switching / (last15.length - 1)) : 0;
+
+      const burst = last15.length;
+      let over = clamp((burst / thresholds.burst_warn) * 58 + switchRate * 30);
+      if (burst >= thresholds.burst_alert) over = clamp(Math.max(over, 78 + (burst - thresholds.burst_alert) * 4));
+
+      const prev = hist.length > 1 ? hist[hist.length - 2] : null;
+      const dtFromPrev = prev ? (current.ts.getTime() - prev.ts.getTime()) / 60000 : 999;
+      const rapidAfterLoss = Boolean(prev && prev.pnl < 0 && dtFromPrev <= thresholds.rapid_reentry_warn_min);
+
+      const notionals = hist.slice(-20).map((x) => x.notional).filter((x) => x > 0);
+      const notionalMedian = median(notionals) || current.notional || 1;
+      const sizeJump = current.notional / notionalMedian;
+      const streak = lossStreak(hist);
+      let revenge = clamp((streak * 14) + Math.max(0, sizeJump - 1) * 45 + (rapidAfterLoss ? 30 : 0));
+      if (rapidAfterLoss && sizeJump >= thresholds.size_jump_alert_ratio && streak >= 2) revenge = clamp(Math.max(revenge, 82));
+
+      const recent = hist.slice(-24);
+      const wins = recent.filter((x) => x.pnl > 0).map((x) => x.pnl);
+      const losses = recent.filter((x) => x.pnl < 0).map((x) => Math.abs(x.pnl));
+      const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
+      const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+      const lossRatio = avgWin > 0 ? (avgLoss / avgWin) : (avgLoss > 0 ? 2 : 0);
+      let loss = clamp(Math.max(0, lossRatio - thresholds.loss_ratio_warn) * 60 + streak * 8 + (current.pnl < 0 ? 8 : 0));
+      if (lossRatio >= thresholds.loss_ratio_alert) loss = clamp(Math.max(loss, 80));
+
+      return {
+        overtrading: over,
+        revenge_trading: revenge,
+        loss_aversion: loss,
+        burst,
+        dtFromPrev,
+        sizeJump,
+        lossRatio,
+      };
+    }
+
+    function metricState(score){
+      if (score >= 75) return "Elevated";
+      if (score >= 55) return "Warning";
+      return "Controlled";
+    }
+
+    function renderMetrics(scores){
+      document.querySelectorAll(".sim-metric").forEach((box) => {
+        const key = box.dataset.key;
+        const value = scores[key] ?? 0;
+        box.querySelector(".sim-metric-value").textContent = fmtNum(value, 1);
+        box.querySelector(".control-fill").style.width = `${fmtNum(value, 1)}%`;
+        box.querySelector(".control-fill").classList.toggle("is-alert", value >= 75);
+        box.querySelector(".sim-metric-state").textContent = metricState(value);
+      });
+    }
+
+    function pushAlert(level, text, timeLabel){
+      state.alerts.unshift({ level, text, timeLabel });
+      state.alerts = state.alerts.slice(0, 8);
+      alertsRoot.innerHTML = state.alerts.map((a) => `
+        <div class="sim-alert-item ${a.level}">
+          <div class="sim-alert-time">${a.timeLabel}</div>
+          <div>${a.text}</div>
+        </div>
+      `).join("");
+    }
+
+    function emitPreventiveAlerts(metrics, row){
+      const timeLabel = row.display_time;
+      if (metrics.overtrading >= 55 && metrics.overtrading < 75){
+        pushAlert("warn", `Overtrading trend rising (${fmtNum(metrics.overtrading, 1)}). Slow down entries and enforce setup checklist.`, timeLabel);
+      } else if (metrics.overtrading >= 75){
+        pushAlert("high", `Overtrading risk elevated (${fmtNum(metrics.overtrading, 1)}). Pause now before executing another trade.`, timeLabel);
+      }
+
+      if (metrics.revenge_trading >= 55 && metrics.revenge_trading < 75){
+        pushAlert("warn", `Revenge pressure building. You are re-entering too quickly after losses.`, timeLabel);
+      } else if (metrics.revenge_trading >= 75){
+        pushAlert("high", `Revenge risk elevated. Apply a cooling-off break before next order.`, timeLabel);
+      }
+
+      if (metrics.loss_aversion >= 55 && metrics.loss_aversion < 75){
+        pushAlert("warn", `Loss-control drift detected. Avg loss is starting to dominate avg win.`, timeLabel);
+      } else if (metrics.loss_aversion >= 75){
+        pushAlert("high", `Loss aversion elevated. Tighten stop discipline immediately.`, timeLabel);
+      }
+    }
+
+    function renderTape(){
+      tapeBody.innerHTML = state.tape.map((t) => `
+        <tr>
+          <td>${t.display_time}</td>
+          <td>${t.asset}</td>
+          <td>${t.side}</td>
+          <td class="text-end ${t.pnl >= 0 ? 'text-success' : 'text-danger'}">${fmtNum(t.pnl, 2)}</td>
+          <td class="text-end">${fmtNum(t.balance, 2)}</td>
+          <td class="text-end">${fmtNum(t.notional, 2)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function stepReplay(){
+      if (state.idx >= streamRows.length){
+        setRunning(false);
+        return;
+      }
+      const row = streamRows[state.idx];
+      state.idx += 1;
+
+      const ts = new Date(row.timestamp);
+      state.cumulative += Number(row.pnl || 0);
+      chart.data.labels.push(fmtTime.format(ts));
+      chart.data.datasets[0].data.push(state.cumulative);
+      if (chart.data.labels.length > 120){
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
+      chart.update("none");
+
+      const current = {
+        ...row,
+        ts,
+        pnl: Number(row.pnl || 0),
+        balance: Number(row.balance || 0),
+        notional: Number(row.notional || 0),
+      };
+      state.history.push(current);
+      state.tape.unshift(current);
+      state.tape = state.tape.slice(0, 9);
+      renderTape();
+
+      const metrics = evaluatePressures(current);
+      renderMetrics(metrics);
+      emitPreventiveAlerts(metrics, row);
+    }
+
+    function resetReplay(){
+      setRunning(false);
+      state.idx = 0;
+      state.cumulative = 0;
+      state.history = [];
+      state.tape = [];
+      state.alerts = [];
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.update();
+      renderTape();
+      alertsRoot.innerHTML = `<div class="small text-muted">Start simulation to generate preventive alerts.</div>`;
+      renderMetrics({
+        overtrading: baselineScores.overtrading || 0,
+        revenge_trading: baselineScores.revenge_trading || 0,
+        loss_aversion: baselineScores.loss_aversion || 0,
+      });
+    }
+
+    startBtn.addEventListener("click", () => setRunning(true));
+    pauseBtn.addEventListener("click", () => setRunning(false));
+    resetBtn.addEventListener("click", resetReplay);
+
+    document.querySelectorAll("#speedControl .speed-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#speedControl .speed-pill").forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        state.speed = Number(btn.dataset.speed || "1");
+        restartTimer();
+      });
+    });
+
+    resetReplay();
+    {% endif %}
+  </script>
+</body>
+</html>

@@ -23,6 +23,7 @@
       <div class="nb-nav-links ms-3 d-none d-md-flex">
         <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
         <a class="nav-link-nb {% if page == 'diagnostics' %}active{% endif %}" href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>
+        <a class="nav-link-nb {% if page == 'simulator' %}active{% endif %}" href="{% url 'simulator' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Simulator</a>
       </div>
       <div class="ms-auto d-flex gap-2 align-items-center">
         <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
@@ -233,7 +234,7 @@
             </div>
             <canvas id="chartHour" height="120" class="mt-3"></canvas>
             <div class="small text-muted mt-2">
-              For full heatmap and quality diagnostics, open <a href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>.
+              Deep dive in <a href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a> and test preventive alerts in <a href="{% url 'simulator' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Simulator</a>.
             </div>
           </div>
         </div>

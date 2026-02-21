@@ -92,10 +92,45 @@ def _serialize_hour_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[str, Any]:
+def _format_display(ts: pd.Timestamp | None) -> str:
+    if ts is None or pd.isna(ts):
+        return "-"
+    return ts.strftime("%d/%m/%Y %H:%M")
+
+
+def _format_signal_value(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        v = float(value)
+        if abs(v) >= 100:
+            return f"{v:.1f}"
+        if abs(v) >= 10:
+            return f"{v:.2f}"
+        return f"{v:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _build_common_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[str, Any]:
     analysis = merge_tips(analyze_biases(df))
     coach = coaching_message(analysis)
-    biases = analysis.get("biases", {})
+    start_ts = df["timestamp"].min()
+    end_ts = df["timestamp"].max()
+    return {
+        "page": page,
+        "empty": False,
+        "batch_id": batch_id,
+        "analysis": analysis,
+        "coach": coach,
+        "n_trades": len(df),
+        "start": analysis["meta"]["start"],
+        "end": analysis["meta"]["end"],
+        "start_display": _format_display(start_ts),
+        "end_display": _format_display(end_ts),
+    }
+
+
+def _build_dashboard_context(df: pd.DataFrame, batch_id: str | None) -> Dict[str, Any]:
+    context = _build_common_context(df, batch_id=batch_id, page="dashboard")
+    biases = context["analysis"].get("biases", {})
 
     bias_snapshot_cards = [
         {"label": "Overtrading", "icon": "bi-lightning-charge", "bias": biases.get("overtrading", {})},
@@ -106,13 +141,6 @@ def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[st
         {"title": "Overtrading discipline", "bias": biases.get("overtrading", {})},
         {"title": "Loss aversion fixes", "bias": biases.get("loss_aversion", {})},
         {"title": "Revenge trading guardrails", "bias": biases.get("revenge_trading", {})},
-    ]
-    extended_bias_cards = [
-        {"label": "Overtrading", "icon": "bi-lightning-charge", "bias": biases.get("overtrading", {})},
-        {"label": "Loss aversion", "icon": "bi-shield-exclamation", "bias": biases.get("loss_aversion", {})},
-        {"label": "Revenge trading", "icon": "bi-fire", "bias": biases.get("revenge_trading", {})},
-        {"label": "FOMO trading", "icon": "bi-rocket-takeoff", "bias": biases.get("fomo_trading", {})},
-        {"label": "Confirmation bias", "icon": "bi-bullseye", "bias": biases.get("confirmation_bias", {})},
     ]
 
     pnl_series = df[["timestamp", "pnl"]].copy()
@@ -128,11 +156,41 @@ def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[st
         )
         .reindex(range(24), fill_value=0.0)
     )
-    intraday_labels = [f"{h:02d}:00" for h in intraday.index.tolist()]
-    intraday_trades = [int(v) for v in intraday["trades"].tolist()]
-    intraday_win_rate = [round(float(v), 2) for v in intraday["win_rate"].tolist()]
-    intraday_avg_pnl = [round(float(v), 2) for v in intraday["avg_pnl"].tolist()]
 
+    context.update(
+        {
+            "bias_snapshot_cards": bias_snapshot_cards,
+            "recommendation_cards": recommendation_cards,
+            "chart_cum_pnl_labels": [t.isoformat() for t in pnl_series["timestamp"].tolist()[-200:]],
+            "chart_cum_pnl_values": pnl_series["cum_pnl"].tolist()[-200:],
+            "chart_balance_labels": [t.isoformat() for t in df["timestamp"].tolist()[-200:]],
+            "chart_balance_values": df["balance"].tolist()[-200:],
+            "chart_intraday_labels": [f"{h:02d}:00" for h in intraday.index.tolist()],
+            "chart_intraday_trades": [int(v) for v in intraday["trades"].tolist()],
+            "chart_intraday_win_rate": [round(float(v), 2) for v in intraday["win_rate"].tolist()],
+            "chart_intraday_avg_pnl": [round(float(v), 2) for v in intraday["avg_pnl"].tolist()],
+            "win_values": df[df["pnl"] > 0]["pnl"].tolist()[:500],
+            "loss_values": df[df["pnl"] <= 0]["pnl"].tolist()[:500],
+        }
+    )
+    return context
+
+
+def _build_diagnostics_context(df: pd.DataFrame, batch_id: str | None) -> Dict[str, Any]:
+    context = _build_common_context(df, batch_id=batch_id, page="diagnostics")
+    analysis = context["analysis"]
+    biases = analysis.get("biases", {})
+
+    intraday = (
+        df.assign(hour_of_day=df["timestamp"].dt.hour)
+        .groupby("hour_of_day")
+        .agg(
+            trades=("pnl", "size"),
+            win_rate=("pnl", lambda s: (s > 0).mean() * 100.0),
+            avg_pnl=("pnl", "mean"),
+        )
+        .reindex(range(24), fill_value=0.0)
+    )
     min_trades_threshold = max(5, min(40, int(len(df) * 0.005)))
     eligible_intraday = intraday[intraday["trades"] >= min_trades_threshold]
     if eligible_intraday.empty:
@@ -152,21 +210,7 @@ def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[st
         .unstack(fill_value=0)
         .reindex(index=range(7), columns=range(24), fill_value=0)
     )
-    heat_win = (
-        df.assign(day_of_week=df["timestamp"].dt.dayofweek, hour_of_day=df["timestamp"].dt.hour)
-        .groupby(["day_of_week", "hour_of_day"])["pnl"]
-        .apply(lambda s: float((s > 0).mean() * 100.0))
-        .unstack(fill_value=0.0)
-        .reindex(index=range(7), columns=range(24), fill_value=0.0)
-    )
-    heatmap_rows = [
-        {
-            "day": DAY_LABELS[d],
-            "values": [int(v) for v in heat.loc[d].tolist()],
-            "win_rates": [round(float(v), 1) for v in heat_win.loc[d].tolist()],
-        }
-        for d in range(7)
-    ]
+    heatmap_rows = [{"day": DAY_LABELS[d], "values": [int(v) for v in heat.loc[d].tolist()]} for d in range(7)]
     heatmap_max = max(int(heat.to_numpy().max()), 1)
 
     dedupe_cols = ["timestamp", "side", "asset", "quantity", "entry_price", "exit_price", "pnl", "balance"]
@@ -180,7 +224,6 @@ def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[st
 
     non_positive_balance_count = int((df["balance"] <= 0).sum())
     flat_balance_rate = float((df["balance"].diff().fillna(0) == 0).mean() * 100.0)
-
     data_quality = {
         "duplicate_count": duplicate_count,
         "large_gap_count": large_gap_count,
@@ -190,46 +233,135 @@ def _build_context(df: pd.DataFrame, batch_id: str | None, page: str) -> Dict[st
         "flat_balance_rate": round(flat_balance_rate, 2),
     }
 
-    win = df[df["pnl"] > 0]["pnl"].tolist()[:500]
-    loss = df[df["pnl"] <= 0]["pnl"].tolist()[:500]
-    start_ts = df["timestamp"].min()
-    end_ts = df["timestamp"].max()
-    start_display = start_ts.strftime("%d/%m/%Y %H:%M")
-    end_display = end_ts.strftime("%d/%m/%Y %H:%M")
+    hour_timeline = (
+        df.assign(hour_bucket=df["timestamp"].dt.floor("h"))
+        .groupby("hour_bucket")
+        .size()
+        .sort_index()
+    )
+    chart_hourly_labels = [t.isoformat() for t in hour_timeline.index.tolist()[-96:]]
+    chart_hourly_values = [int(v) for v in hour_timeline.tolist()[-96:]]
 
-    context = {
-        "page": page,
-        "empty": False,
-        "batch_id": batch_id,
-        "analysis": analysis,
-        "risk_profile": analysis.get("risk_profile", {}),
-        "coach": coach,
-        "n_trades": len(df),
-        "start": analysis["meta"]["start"],
-        "end": analysis["meta"]["end"],
-        "start_display": start_display,
-        "end_display": end_display,
-        "bias_snapshot_cards": bias_snapshot_cards,
-        "extended_bias_cards": extended_bias_cards,
-        "recommendation_cards": recommendation_cards,
-        "best_hours": best_hours,
-        "worst_hours": worst_hours,
-        "min_trades_threshold": min_trades_threshold,
-        "heatmap_rows": heatmap_rows,
-        "heatmap_max": heatmap_max,
-        "hour_labels_24": [f"{h:02d}" for h in range(24)],
-        "data_quality": data_quality,
-        "chart_cum_pnl_labels": [t.isoformat() for t in pnl_series["timestamp"].tolist()[-200:]],
-        "chart_cum_pnl_values": pnl_series["cum_pnl"].tolist()[-200:],
-        "chart_balance_labels": [t.isoformat() for t in df["timestamp"].tolist()[-200:]],
-        "chart_balance_values": df["balance"].tolist()[-200:],
-        "chart_intraday_labels": intraday_labels,
-        "chart_intraday_trades": intraday_trades,
-        "chart_intraday_win_rate": intraday_win_rate,
-        "chart_intraday_avg_pnl": intraday_avg_pnl,
-        "win_values": win,
-        "loss_values": loss,
-    }
+    gap_bins = pd.cut(
+        positive_dt,
+        bins=[0.0, 1.0, 5.0, 30.0, float("inf")],
+        labels=["<1 min", "1-5 min", "5-30 min", ">30 min"],
+        include_lowest=True,
+    )
+    gap_dist = gap_bins.value_counts().reindex(["<1 min", "1-5 min", "5-30 min", ">30 min"], fill_value=0)
+    gap_labels = gap_dist.index.tolist()
+    gap_values = [int(v) for v in gap_dist.values.tolist()]
+
+    bias_meta = [
+        ("overtrading", "Overtrading", "bi-lightning-charge"),
+        ("loss_aversion", "Loss aversion", "bi-shield-exclamation"),
+        ("revenge_trading", "Revenge trading", "bi-fire"),
+        ("fomo_trading", "FOMO trading", "bi-rocket-takeoff"),
+        ("confirmation_bias", "Confirmation bias", "bi-bullseye"),
+    ]
+    bias_signal_cards = []
+    for key, label, icon in bias_meta:
+        bias_obj = biases.get(key, {})
+        signals = bias_obj.get("signals", []) or []
+        rendered_signals = [
+            {"metric": str(s.get("metric", "-")).replace("_", " "), "value": _format_signal_value(s.get("value", "-"))}
+            for s in signals[:5]
+        ]
+        bias_signal_cards.append(
+            {
+                "label": label,
+                "icon": icon,
+                "score": float(bias_obj.get("score", 0.0)),
+                "level": str(bias_obj.get("level", "LOW")),
+                "signals": rendered_signals,
+            }
+        )
+
+    context.update(
+        {
+            "risk_profile": analysis.get("risk_profile", {}),
+            "best_hours": best_hours,
+            "worst_hours": worst_hours,
+            "min_trades_threshold": min_trades_threshold,
+            "heatmap_rows": heatmap_rows,
+            "heatmap_max": heatmap_max,
+            "hour_labels_24": [f"{h:02d}" for h in range(24)],
+            "data_quality": data_quality,
+            "bias_signal_cards": bias_signal_cards,
+            "diag_hourly_labels": chart_hourly_labels,
+            "diag_hourly_values": chart_hourly_values,
+            "diag_gap_labels": gap_labels,
+            "diag_gap_values": gap_values,
+        }
+    )
+    return context
+
+
+def _build_simulator_context(df: pd.DataFrame, batch_id: str | None) -> Dict[str, Any]:
+    context = _build_common_context(df, batch_id=batch_id, page="simulator")
+    biases = context["analysis"].get("biases", {})
+
+    sim_df = df.sort_values("timestamp").tail(420).copy().reset_index(drop=True)
+    sim_df["notional"] = sim_df["quantity"].abs() * sim_df["entry_price"].abs()
+    sim_rows = []
+    for _, row in sim_df.iterrows():
+        sim_rows.append(
+            {
+                "timestamp": row["timestamp"].isoformat(),
+                "display_time": row["timestamp"].strftime("%d/%m %H:%M:%S"),
+                "asset": str(row["asset"]),
+                "side": str(row["side"]),
+                "pnl": round(float(row["pnl"]), 2),
+                "balance": round(float(row["balance"]), 2),
+                "notional": round(float(row["notional"]), 2),
+            }
+        )
+
+    bucket_15 = df.set_index("timestamp").resample("15min").size()
+    burst_baseline = float(bucket_15.median()) if len(bucket_15) else 1.0
+    burst_warn = max(4.0, burst_baseline * 1.5)
+    burst_alert = max(6.0, burst_baseline * 2.2)
+
+    context.update(
+        {
+            "sim_stream_rows": sim_rows,
+            "sim_thresholds": {
+                "burst_warn": round(float(burst_warn), 2),
+                "burst_alert": round(float(burst_alert), 2),
+                "rapid_reentry_warn_min": 5.0,
+                "rapid_reentry_alert_min": 2.0,
+                "size_jump_warn_ratio": 1.25,
+                "size_jump_alert_ratio": 1.60,
+                "loss_ratio_warn": 1.20,
+                "loss_ratio_alert": 1.60,
+            },
+            "sim_baseline_scores": {
+                "overtrading": round(float(biases.get("overtrading", {}).get("score", 0.0)), 1),
+                "loss_aversion": round(float(biases.get("loss_aversion", {}).get("score", 0.0)), 1),
+                "revenge_trading": round(float(biases.get("revenge_trading", {}).get("score", 0.0)), 1),
+            },
+            "sim_watch_tips": [
+                {
+                    "title": "Overtrading watch",
+                    "tip": (biases.get("overtrading", {}).get("tips", []) or ["Respect a max-trade cap each session."])[0],
+                },
+                {
+                    "title": "Revenge watch",
+                    "tip": (
+                        biases.get("revenge_trading", {}).get("tips", [])
+                        or ["After a loss, force a cooling-off period before re-entry."]
+                    )[0],
+                },
+                {
+                    "title": "Loss control watch",
+                    "tip": (
+                        biases.get("loss_aversion", {}).get("tips", [])
+                        or ["Set your stop before entry and avoid moving it away."]
+                    )[0],
+                },
+            ],
+        }
+    )
     return context
 
 
@@ -241,7 +373,7 @@ def dashboard(request):
     if df is None:
         return render(request, "dashboard.html", {"page": "dashboard", "batch_id": batch_id, "empty": True})
 
-    context = _build_context(df, batch_id=batch_id, page="dashboard")
+    context = _build_dashboard_context(df, batch_id=batch_id)
     return render(request, "dashboard.html", context)
 
 
@@ -253,5 +385,17 @@ def diagnostics(request):
     if df is None:
         return render(request, "diagnostics.html", {"page": "diagnostics", "batch_id": batch_id, "empty": True})
 
-    context = _build_context(df, batch_id=batch_id, page="diagnostics")
+    context = _build_diagnostics_context(df, batch_id=batch_id)
     return render(request, "diagnostics.html", context)
+
+
+def simulator(request):
+    """Replay view for near real-time behavioral drift and preventive alerts."""
+    batch_id = request.GET.get("batch_id") or request.session.get("latest_batch_id")
+    df = _load_dataframe_for_batch(batch_id)
+
+    if df is None:
+        return render(request, "simulator.html", {"page": "simulator", "batch_id": batch_id, "empty": True})
+
+    context = _build_simulator_context(df, batch_id=batch_id)
+    return render(request, "simulator.html", context)

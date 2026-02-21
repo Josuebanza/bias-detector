@@ -473,6 +473,7 @@ h3,
 .heatmap-wrap {
   width: 100%;
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .heat-table {
@@ -540,6 +541,152 @@ h3,
   color: #fff;
 }
 
+.diagnostic-bias-card {
+  border: 1px solid var(--nb-border);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.85rem;
+}
+
+.signal-table {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.signal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+  border: 1px solid #EEF0F3;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  background: #F9FAFB;
+}
+
+.signal-metric {
+  color: #4B5563;
+  max-width: 70%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.speed-pills {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.speed-pill {
+  border: 1px solid #D1D5DB;
+  background: #fff;
+  color: #111;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  min-width: 40px;
+  padding: 0.18rem 0.55rem;
+}
+
+.speed-pill.is-active {
+  border-color: var(--nb-red);
+  background: rgba(225, 37, 27, 0.1);
+  color: #8A1D15;
+}
+
+.sim-metric {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem 0;
+}
+
+.sim-metric-value {
+  font-size: 0.95rem;
+}
+
+.sim-metric-state {
+  color: #6B7280;
+}
+
+.sim-chip {
+  border: 1px solid #D1D5DB;
+  border-radius: 999px;
+  background: #F9FAFB;
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.22rem 0.58rem;
+}
+
+.sim-alerts {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sim-alert-item {
+  border: 1px solid #E5E7EB;
+  border-left: 4px solid #6B7280;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.88rem;
+  background: #FAFAFA;
+}
+
+.sim-alert-item.warn {
+  border-left-color: #B45309;
+  background: #FFFBEB;
+}
+
+.sim-alert-item.high {
+  border-left-color: var(--nb-red);
+  background: #FEF2F2;
+}
+
+.sim-alert-time {
+  color: #6B7280;
+  font-size: 0.75rem;
+  margin-bottom: 0.12rem;
+}
+
+.sim-watch-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sim-watch-card {
+  border: 1px solid var(--nb-border);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.6rem 0.7rem;
+}
+
+.sim-table thead th {
+  background: #F9FAFB;
+  color: #374151;
+  font-weight: 600;
+  border-bottom: 1px solid var(--nb-border);
+}
+
+.viz-frame-half {
+  position: relative;
+  height: min(42vh, 320px);
+  max-height: 50vh;
+  min-height: 210px;
+}
+
+.viz-frame-half > canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 50vh;
+}
+
+.table-scroll-half {
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
 @media (max-width: 991.98px) {
   .hero-score-ring {
     width: 168px;
@@ -548,6 +695,11 @@ h3,
 
   .hero-score-value {
     font-size: 2.5rem;
+  }
+
+  .viz-frame-half {
+    height: min(40vh, 280px);
+    min-height: 190px;
   }
 }
 
