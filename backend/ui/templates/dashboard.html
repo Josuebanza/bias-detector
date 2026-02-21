@@ -1,0 +1,303 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bias Detector Dashboard</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body class="bg-soft">
+  <nav class="navbar navbar-expand-lg navbar-dark nb-nav shadow-sm">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="/">
+        <span class="brand-dot"></span> Bias Detector
+      </a>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <span class="badge rounded-pill text-bg-light">Batch: {{ batch_id|default:"—" }}</span>
+        <a class="btn btn-sm btn-outline-light" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
+          API <i class="bi bi-box-arrow-up-right ms-1"></i>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container my-4">
+    {% if messages %}
+      <div class="mb-3">
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }} shadow-sm mb-2">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <!-- Header -->
+    <div class="row g-3 align-items-stretch">
+      <div class="col-lg-7">
+        <div class="card card-soft shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <div>
+                <h2 class="h5 mb-1">Upload trading history</h2>
+                <p class="text-secondary mb-0">
+                  CSV/Excel with columns: <span class="code">timestamp, side, asset, quantity, entry_price, exit_price, pnl, balance</span>
+                </p>
+              </div>
+              <div class="text-end">
+                <div class="small text-secondary">Dataset-ready</div>
+                <div class="fw-semibold">Fast rule engine</div>
+              </div>
+            </div>
+
+            <hr class="my-3">
+
+            <form class="row g-2" method="post" action="{% url 'upload' %}" enctype="multipart/form-data">
+              {% csrf_token %}
+              <div class="col-md-8">
+                <input class="form-control" type="file" name="file" accept=".csv,.xlsx,.xls" required>
+              </div>
+              <div class="col-md-4 d-grid">
+                <button class="btn btn-primary btn-nb" type="submit">
+                  Analyze <i class="bi bi-graph-up-arrow ms-1"></i>
+                </button>
+              </div>
+            </form>
+
+            <div class="mt-3 small text-secondary">
+              Tip: during judging, the dataset can be ~20× bigger—this app uses <b>bulk inserts</b> + <b>vectorized pandas</b>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="card card-soft shadow-sm h-100">
+          <div class="card-body">
+            <h2 class="h5 mb-2">Psychology snapshot</h2>
+
+            {% if empty %}
+              <div class="p-3 bg-body-tertiary rounded-3 border">
+                <div class="d-flex gap-2 align-items-center">
+                  <i class="bi bi-upload text-primary fs-4"></i>
+                  <div>
+                    <div class="fw-semibold">No trades loaded yet</div>
+                    <div class="text-secondary small">Upload one of the provided CSV files to start.</div>
+                  </div>
+                </div>
+              </div>
+            {% else %}
+              <div class="d-flex align-items-center gap-3">
+                <div class="ring" style="--p:{{ analysis.overall.score|default:0 }}">
+                  <div class="ring-inner">
+                    <div class="small text-secondary">Overall</div>
+                    <div class="display-6 fw-bold lh-1">{{ analysis.overall.score }}</div>
+                    <div class="badge text-bg-{{ analysis.overall.level|lower }} mt-1">{{ analysis.overall.level }}</div>
+                  </div>
+                </div>
+
+                <div class="flex-grow-1">
+                  <div class="text-secondary small mb-1">Coach</div>
+                  <div class="fw-semibold">{{ coach }}</div>
+                  <div class="text-secondary small mt-2">
+                    Trades: <b>{{ n_trades }}</b> · Window: <b>{{ start }}</b> → <b>{{ end }}</b>
+                  </div>
+                </div>
+              </div>
+
+              <hr class="my-3">
+
+              <div class="row g-2">
+                {% for key,label,icon in
+                  ('overtrading','Overtrading','bi-lightning-charge'),
+                  ('loss_aversion','Loss aversion','bi-shield-exclamation'),
+                  ('revenge_trading','Revenge trading','bi-fire')
+                %}
+                {% with b=analysis.biases[key] %}
+                  <div class="col-12">
+                    <div class="mini-card">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex gap-2 align-items-center">
+                          <i class="bi {{ icon }} text-primary"></i>
+                          <div class="fw-semibold">{{ label }}</div>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                          <span class="badge text-bg-{{ b.level|lower }}">{{ b.level }}</span>
+                          <span class="fw-semibold">{{ b.score|floatformat:1 }}</span>
+                        </div>
+                      </div>
+                      <div class="progress mt-2" style="height: 8px;">
+                        <div class="progress-bar" role="progressbar" style="width: {{ b.score }}%"></div>
+                      </div>
+                    </div>
+                  </div>
+                {% endwith %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if not empty %}
+    <!-- Charts -->
+    <div class="row g-3 mt-1">
+      <div class="col-lg-8">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h6 mb-0">Equity curve (cum P/L)</h3>
+              <span class="text-secondary small">Last 200 trades</span>
+            </div>
+            <canvas id="chartCumPnl" height="110" class="mt-2"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h6 mb-0">Trade bursts</h3>
+              <span class="text-secondary small">By hour</span>
+            </div>
+            <canvas id="chartHour" height="160" class="mt-2"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h6 mb-0">Balance</h3>
+              <span class="text-secondary small">Last 200 points</span>
+            </div>
+            <canvas id="chartBalance" height="120" class="mt-2"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h6 mb-0">Win vs Loss distribution</h3>
+              <span class="text-secondary small">Up to 500 samples</span>
+            </div>
+            <canvas id="chartWinLoss" height="120" class="mt-2"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="row g-3 mt-1">
+      <div class="col-12">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <h3 class="h6">Personalized next steps</h3>
+            <div class="row g-3">
+              {% for key,title in
+                ('overtrading','Overtrading discipline'),
+                ('loss_aversion','Loss aversion fixes'),
+                ('revenge_trading','Revenge trading guardrails')
+              %}
+              {% with b=analysis.biases[key] %}
+                <div class="col-lg-4">
+                  <div class="p-3 bg-white rounded-3 border h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div class="fw-semibold">{{ title }}</div>
+                      <span class="badge text-bg-{{ b.level|lower }}">{{ b.level }}</span>
+                    </div>
+
+                    <ul class="mb-0 small">
+                      {% for tip in b.tips %}
+                        <li class="mb-1">{{ tip }}</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              {% endwith %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </main>
+
+  {% if not empty %}
+    {{ chart_cum_pnl_labels|json_script:"cumPnlLabels" }}
+    {{ chart_cum_pnl_values|json_script:"cumPnlValues" }}
+    {{ chart_balance_labels|json_script:"balanceLabels" }}
+    {{ chart_balance_values|json_script:"balanceValues" }}
+    {{ chart_hour_labels|json_script:"hourLabels" }}
+    {{ chart_hour_values|json_script:"hourValues" }}
+    {{ win_values|json_script:"winValues" }}
+    {{ loss_values|json_script:"lossValues" }}
+  {% endif %}
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script>
+    function elJson(id){ return JSON.parse(document.getElementById(id).textContent); }
+
+    {% if not empty %}
+    const cumPnlLabels = elJson("cumPnlLabels");
+    const cumPnlValues = elJson("cumPnlValues");
+    const balanceLabels = elJson("balanceLabels");
+    const balanceValues = elJson("balanceValues");
+    const hourLabels = elJson("hourLabels");
+    const hourValues = elJson("hourValues");
+    const winValues = elJson("winValues");
+    const lossValues = elJson("lossValues");
+
+    const commonOpts = {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6 } },
+        y: { ticks: { maxTicksLimit: 5 } }
+      }
+    };
+
+    new Chart(document.getElementById("chartCumPnl"), {
+      type: "line",
+      data: { labels: cumPnlLabels, datasets: [{ data: cumPnlValues, tension: 0.25, pointRadius: 0 }] },
+      options: commonOpts
+    });
+
+    new Chart(document.getElementById("chartBalance"), {
+      type: "line",
+      data: { labels: balanceLabels, datasets: [{ data: balanceValues, tension: 0.25, pointRadius: 0 }] },
+      options: commonOpts
+    });
+
+    new Chart(document.getElementById("chartHour"), {
+      type: "bar",
+      data: { labels: hourLabels, datasets: [{ data: hourValues }] },
+      options: commonOpts
+    });
+
+    new Chart(document.getElementById("chartWinLoss"), {
+      type: "bar",
+      data: {
+        labels: ["Wins", "Losses"],
+        datasets: [{ data: [winValues.length, lossValues.length] }]
+      },
+      options: commonOpts
+    });
+    {% endif %}
+  </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+:root{
+  --nb-red:#d2232a;
+  --nb-dark:#101828;
+  --nb-soft:#f6f7fb;
+}
+.bg-soft{ background: var(--nb-soft); }
+.nb-nav{ background: linear-gradient(90deg, var(--nb-dark), #1f2937); }
+.btn-nb{ background: var(--nb-red); border-color: var(--nb-red); }
+.btn-nb:hover{ filter: brightness(0.95); }
+.brand-dot{
+  display:inline-block; width:10px; height:10px; border-radius:50%;
+  background: var(--nb-red); margin-right:8px; position:relative; top:-1px;
+}
+.card-soft{ border: 1px solid rgba(16,24,40,.08); border-radius: 18px; }
+.code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .85em; }
+.ring{
+  width:132px;height:132px;border-radius:50%;
+  background: conic-gradient(var(--nb-red) calc(var(--p,0)*1%), #e5e7eb 0);
+  display:flex;align-items:center;justify-content:center;
+}
+.ring-inner{
+  width:112px;height:112px;border-radius:50%;
+  background:white; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; text-align:center; border:1px solid rgba(16,24,40,.08);
+}
+.mini-card{
+  background:white; border:1px solid rgba(16,24,40,.08);
+  border-radius: 14px; padding: 10px 12px;
+}
+.badge.text-bg-high{ background: #b42318 !important; }
+.badge.text-bg-medium{ background: #b54708 !important; }
+.badge.text-bg-low{ background: #027a48 !important; }
