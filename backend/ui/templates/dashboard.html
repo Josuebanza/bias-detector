@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bias Detector Dashboard</title>
+  <title>TradeDNA Dashboard</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
   <nav class="navbar navbar-expand-lg nb-nav">
     <div class="container">
       <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">
-        <span class="brand-dot"></span> Bias Detector
+        <span class="brand-dot"></span> TradeDNA
       </a>
       <div class="nb-nav-links ms-3 d-none d-md-flex">
         <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
