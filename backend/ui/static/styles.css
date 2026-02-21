@@ -34,6 +34,34 @@ h3,
   border-bottom: 1px solid #262626;
 }
 
+.nb-nav-links {
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.nav-link-nb {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.72rem;
+  border-radius: 999px;
+  color: #D1D5DB;
+  text-decoration: none;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.nav-link-nb:hover {
+  color: #fff;
+  border-color: #383838;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-link-nb.active {
+  color: #fff;
+  border-color: #4B5563;
+  background: rgba(255, 255, 255, 0.10);
+}
+
 .brand-dot {
   display: inline-block;
   width: 10px;
@@ -78,6 +106,10 @@ h3,
   background:
     radial-gradient(circle at 20% 20%, rgba(225, 37, 27, 0.16), transparent 45%),
     linear-gradient(135deg, #141414, #1f1f1f);
+}
+
+.nb-hero-compact {
+  padding: 1.5rem 1.25rem;
 }
 
 .hero-kicker {
@@ -386,6 +418,126 @@ h3,
 
 .safeguard-card ul {
   padding-left: 1rem;
+}
+
+.risk-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.risk-item {
+  background: #F9FAFB;
+  border: 1px solid var(--nb-border);
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem;
+}
+
+.risk-label {
+  color: var(--nb-muted);
+  font-size: 0.8rem;
+}
+
+.risk-value {
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+
+.metric-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.quality-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quality-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--nb-border);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.92rem;
+}
+
+.quality-item b {
+  font-size: 0.95rem;
+}
+
+.heatmap-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.heat-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  min-width: 980px;
+}
+
+.heat-table th,
+.heat-table td {
+  border: 1px solid var(--nb-border);
+  text-align: center;
+  font-size: 0.74rem;
+  padding: 0.32rem 0.18rem;
+  border-radius: 5px;
+}
+
+.heat-table thead th {
+  background: #F9FAFB;
+  font-weight: 600;
+  color: #374151;
+}
+
+.heat-table .day-label {
+  font-weight: 600;
+  background: #F9FAFB;
+  min-width: 54px;
+}
+
+.heat-cell {
+  transition: background-color 0.2s ease;
+}
+
+.hour-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.hour-item {
+  border: 1px solid var(--nb-border);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hour-item.good {
+  background: #F6FFFB;
+}
+
+.hour-item.bad {
+  background: #FFF8F7;
+}
+
+.hour-badge {
+  min-width: 62px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.22rem 0.48rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  background: #111111;
+  color: #fff;
 }
 
 @media (max-width: 991.98px) {

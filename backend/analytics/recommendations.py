@@ -21,6 +21,16 @@ DEFAULT_RECOMMENDATIONS: Dict[str, List[str]] = {
         "Reduce size after losses (never increase it) until you're back to baseline.",
         "Write a one-line reason before every trade: 'I trade because…'.",
     ],
+    "fomo_trading": [
+        "Avoid entering immediately after large green candles; wait for a pullback checklist.",
+        "Limit FOMO entries to pre-defined setups and fixed risk size.",
+        "If you feel urgency, delay execution by 3 minutes and re-check criteria.",
+    ],
+    "confirmation_bias": [
+        "Before each trade, write one argument against your idea.",
+        "Cap repeated same-direction entries on the same asset within a short window.",
+        "Review losing streaks for pattern-fixation and broaden your scenario set.",
+    ],
 }
 
 def merge_tips(bias_payload: dict) -> dict:

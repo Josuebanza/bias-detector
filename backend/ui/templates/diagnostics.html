@@ -1,0 +1,257 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bias Detector Diagnostics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body class="nb-body">
+  <nav class="navbar navbar-expand-lg nb-nav">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">
+        <span class="brand-dot"></span> Bias Detector
+      </a>
+      <div class="nb-nav-links ms-3 d-none d-md-flex">
+        <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
+        <a class="nav-link-nb {% if page == 'diagnostics' %}active{% endif %}" href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>
+      </div>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
+        <a class="btn btn-sm btn-nb-secondary" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
+          API <i class="bi bi-box-arrow-up-right ms-1"></i>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    {% if empty %}
+      <div class="card nb-card">
+        <div class="card-body p-4 text-center">
+          <h1 class="section-title mb-2">Diagnostics</h1>
+          <p class="text-muted mb-0">Upload a dataset on the Overview page to unlock diagnostics.</p>
+        </div>
+      </div>
+    {% else %}
+      <section class="nb-hero nb-hero-compact mb-4">
+        <div class="hero-kicker">Diagnostics</div>
+        <h1 class="hero-title">Advanced Behavioral Diagnostics</h1>
+        <p class="hero-subtitle">Heatmap, data quality and expanded bias coverage for batch {{ batch_id }}</p>
+      </section>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Risk Profile</h2>
+              <div class="risk-grid">
+                <div class="risk-item">
+                  <div class="risk-label">Profile</div>
+                  <div class="risk-value">{{ risk_profile.level|default:"BALANCED" }}</div>
+                </div>
+                <div class="risk-item">
+                  <div class="risk-label">Score</div>
+                  <div class="risk-value">{{ risk_profile.score|default:0|floatformat:1 }}</div>
+                </div>
+                <div class="risk-item">
+                  <div class="risk-label">Max Drawdown</div>
+                  <div class="risk-value">{{ risk_profile.max_drawdown_pct|default:0|floatformat:1 }}%</div>
+                </div>
+                <div class="risk-item">
+                  <div class="risk-label">P/L Volatility</div>
+                  <div class="risk-value">{{ risk_profile.pnl_volatility|default:0|floatformat:2 }}</div>
+                </div>
+                <div class="risk-item">
+                  <div class="risk-label">Win Rate</div>
+                  <div class="risk-value">{{ risk_profile.win_rate|default:0|floatformat:1 }}%</div>
+                </div>
+                <div class="risk-item">
+                  <div class="risk-label">Profit Factor</div>
+                  <div class="risk-value">{{ risk_profile.profit_factor|default:0|floatformat:2 }}</div>
+                </div>
+              </div>
+
+              <div class="risk-bars mt-3">
+                <div class="metric-line">
+                  <span>Stability</span>
+                  <span>{{ risk_profile.stability|default:0|floatformat:1 }}</span>
+                </div>
+                <div class="bias-track"><div class="bias-fill bias-low" style="width: {{ risk_profile.stability|default:0 }}%"></div></div>
+
+                <div class="metric-line mt-2">
+                  <span>Drawdown Resilience</span>
+                  <span>{{ risk_profile.drawdown_resilience|default:0|floatformat:1 }}</span>
+                </div>
+                <div class="bias-track"><div class="bias-fill bias-medium" style="width: {{ risk_profile.drawdown_resilience|default:0 }}%"></div></div>
+
+                <div class="metric-line mt-2">
+                  <span>Consistency</span>
+                  <span>{{ risk_profile.consistency|default:0|floatformat:1 }}</span>
+                </div>
+                <div class="bias-track"><div class="bias-fill bias-high" style="width: {{ risk_profile.consistency|default:0 }}%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Data Quality</h2>
+              <div class="quality-list">
+                <div class="quality-item"><span>Duplicate rows</span><b>{{ data_quality.duplicate_count }}</b></div>
+                <div class="quality-item"><span>Large time gaps</span><b>{{ data_quality.large_gap_count }}</b></div>
+                <div class="quality-item"><span>Median gap (min)</span><b>{{ data_quality.median_gap_min|floatformat:2 }}</b></div>
+                <div class="quality-item"><span>Gap alert threshold (min)</span><b>{{ data_quality.gap_threshold_min|floatformat:2 }}</b></div>
+                <div class="quality-item"><span>Non-positive balance points</span><b>{{ data_quality.non_positive_balance_count }}</b></div>
+                <div class="quality-item"><span>Flat balance rate</span><b>{{ data_quality.flat_balance_rate|floatformat:2 }}%</b></div>
+              </div>
+              <p class="small text-muted mt-3 mb-0">These checks help identify preprocessing issues and suspicious timeline artifacts.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-12">
+          <div class="card nb-card">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="section-title mb-0">Trading Heatmap</h2>
+                <span class="section-meta">Day of week x hour of day</span>
+              </div>
+
+              <div class="heatmap-wrap">
+                <table class="heat-table">
+                  <thead>
+                    <tr>
+                      <th>Day</th>
+                      {% for h in hour_labels_24 %}
+                        <th>{{ h }}</th>
+                      {% endfor %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in heatmap_rows %}
+                      <tr>
+                        <td class="day-label">{{ row.day }}</td>
+                        {% for v in row.values %}
+                          <td class="heat-cell" data-value="{{ v }}">{{ v }}</td>
+                        {% endfor %}
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Best Trading Hours</h2>
+              <p class="small text-muted">Filtered with at least {{ min_trades_threshold }} trades.</p>
+              <div class="hour-list">
+                {% for row in best_hours %}
+                  <div class="hour-item good">
+                    <div>
+                      <div class="fw-semibold">{{ row.hour }}</div>
+                      <div class="small text-muted">Trades: {{ row.trades }} | Avg P/L: {{ row.avg_pnl|floatformat:2 }}</div>
+                    </div>
+                    <div class="hour-badge">{{ row.win_rate|floatformat:1 }}%</div>
+                  </div>
+                {% empty %}
+                  <div class="text-muted small">Not enough data.</div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card nb-card h-100">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Weakest Trading Hours</h2>
+              <p class="small text-muted">Filtered with at least {{ min_trades_threshold }} trades.</p>
+              <div class="hour-list">
+                {% for row in worst_hours %}
+                  <div class="hour-item bad">
+                    <div>
+                      <div class="fw-semibold">{{ row.hour }}</div>
+                      <div class="small text-muted">Trades: {{ row.trades }} | Avg P/L: {{ row.avg_pnl|floatformat:2 }}</div>
+                    </div>
+                    <div class="hour-badge">{{ row.win_rate|floatformat:1 }}%</div>
+                  </div>
+                {% empty %}
+                  <div class="text-muted small">Not enough data.</div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-12">
+          <div class="card nb-card">
+            <div class="card-body">
+              <h2 class="section-title mb-3">Extended Bias Coverage</h2>
+              <div class="row g-3">
+                {% for card in extended_bias_cards %}
+                {% with b=card.bias %}
+                {% with lvl=b.level|default:'LOW' %}
+                  <div class="col-lg-4 col-md-6">
+                    <div class="safeguard-card h-100">
+                      <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="fw-semibold"><i class="bi {{ card.icon }} me-1"></i>{{ card.label }}</div>
+                        <span class="state-badge state-{{ lvl|lower }}">
+                          {% if lvl == "LOW" %}Controlled{% elif lvl == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
+                        </span>
+                      </div>
+                      <div class="small mb-2">Score: <b>{{ b.score|default:0|floatformat:1 }}</b></div>
+                      {% if b.tips and b.tips.0 %}
+                        <div class="small text-muted">{{ b.tips.0 }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endwith %}
+                {% endwith %}
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </main>
+
+  {% if not empty %}
+    {{ heatmap_max|json_script:"heatmapMax" }}
+  {% endif %}
+
+  <script>
+    {% if not empty %}
+    const heatmapMax = JSON.parse(document.getElementById("heatmapMax").textContent) || 1;
+    document.querySelectorAll(".heat-cell").forEach((cell) => {
+      const value = Number.parseFloat(cell.dataset.value || "0") || 0;
+      const ratio = Math.max(0, Math.min(1, value / heatmapMax));
+      const alpha = 0.08 + ratio * 0.82;
+      cell.style.backgroundColor = `rgba(225, 37, 27, ${alpha.toFixed(3)})`;
+      cell.style.color = ratio > 0.58 ? "#fff" : "#111";
+    });
+    {% endif %}
+  </script>
+</body>
+</html>

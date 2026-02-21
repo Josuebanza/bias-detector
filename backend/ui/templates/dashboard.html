@@ -17,9 +17,13 @@
 <body class="nb-body">
   <nav class="navbar navbar-expand-lg nb-nav">
     <div class="container">
-      <a class="navbar-brand fw-semibold" href="/">
+      <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">
         <span class="brand-dot"></span> Bias Detector
       </a>
+      <div class="nb-nav-links ms-3 d-none d-md-flex">
+        <a class="nav-link-nb {% if page == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Overview</a>
+        <a class="nav-link-nb {% if page == 'diagnostics' %}active{% endif %}" href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>
+      </div>
       <div class="ms-auto d-flex gap-2 align-items-center">
         <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
         <a class="btn btn-sm btn-nb-secondary" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
@@ -224,10 +228,13 @@
         <div class="card nb-card chart-card h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center">
-              <h3 class="section-title mb-0">Trading Activity Peaks</h3>
-              <span class="section-meta">By hour</span>
+            <h3 class="section-title mb-0">Trading Activity Peaks</h3>
+              <span class="section-meta">24h volume + win rate</span>
             </div>
             <canvas id="chartHour" height="120" class="mt-3"></canvas>
+            <div class="small text-muted mt-2">
+              For full heatmap and quality diagnostics, open <a href="{% url 'diagnostics' %}{% if batch_id %}?batch_id={{ batch_id|urlencode }}{% endif %}">Diagnostics</a>.
+            </div>
           </div>
         </div>
       </div>
@@ -298,8 +305,10 @@
     {{ chart_cum_pnl_values|json_script:"cumPnlValues" }}
     {{ chart_balance_labels|json_script:"balanceLabels" }}
     {{ chart_balance_values|json_script:"balanceValues" }}
-    {{ chart_hour_labels|json_script:"hourLabels" }}
-    {{ chart_hour_values|json_script:"hourValues" }}
+    {{ chart_intraday_labels|json_script:"intradayLabels" }}
+    {{ chart_intraday_trades|json_script:"intradayTrades" }}
+    {{ chart_intraday_win_rate|json_script:"intradayWinRate" }}
+    {{ chart_intraday_avg_pnl|json_script:"intradayAvgPnl" }}
     {{ win_values|json_script:"winValues" }}
     {{ loss_values|json_script:"lossValues" }}
   {% endif %}
@@ -316,8 +325,10 @@
     const cumPnlValues = elJson("cumPnlValues");
     const balanceLabels = elJson("balanceLabels");
     const balanceValues = elJson("balanceValues");
-    const hourLabels = elJson("hourLabels");
-    const hourValues = elJson("hourValues");
+    const intradayLabels = elJson("intradayLabels");
+    const intradayTrades = elJson("intradayTrades");
+    const intradayWinRate = elJson("intradayWinRate");
+    const intradayAvgPnl = elJson("intradayAvgPnl");
     const winValues = elJson("winValues");
     const lossValues = elJson("lossValues");
 
@@ -328,22 +339,15 @@
       minute: "2-digit",
       hour12: false,
     });
-    const fmtHour = new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      hour12: false,
-    });
 
     function toFriendlyLabel(value, granularity){
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return value;
-      return granularity === "hour" ? fmtHour.format(d) : fmtDateTime.format(d);
+      return granularity === "hour" ? value : fmtDateTime.format(d);
     }
 
     const cumPnlLabelsFriendly = cumPnlLabels.map(v => toFriendlyLabel(v, "minute"));
     const balanceLabelsFriendly = balanceLabels.map(v => toFriendlyLabel(v, "minute"));
-    const hourLabelsFriendly = hourLabels.map(v => toFriendlyLabel(v, "hour"));
 
     const indexRoot = document.getElementById("behavioralControlIndex");
     if (indexRoot) {
@@ -405,6 +409,52 @@
       }
     };
 
+    const hourOpts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: chartColors.axis, boxWidth: 10, usePointStyle: true }
+        },
+        tooltip: {
+          backgroundColor: chartColors.tooltipBg,
+          borderColor: chartColors.tooltipBorder,
+          borderWidth: 1,
+          titleColor: "#F9FAFB",
+          bodyColor: "#F9FAFB",
+          padding: 10,
+          callbacks: {
+            afterBody(items) {
+              const idx = items?.[0]?.dataIndex ?? 0;
+              const pnl = intradayAvgPnl[idx] ?? 0;
+              return `Avg P/L: ${Number(pnl).toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: chartColors.axis, maxTicksLimit: 12 }
+        },
+        y: {
+          position: "left",
+          grid: { color: chartColors.grid, drawBorder: false },
+          ticks: { color: chartColors.axis, maxTicksLimit: 5 },
+          title: { display: true, text: "Trades", color: chartColors.axis }
+        },
+        y1: {
+          position: "right",
+          grid: { drawOnChartArea: false },
+          min: 0,
+          max: 100,
+          ticks: { color: chartColors.axis, callback: (v) => `${v}%` },
+          title: { display: true, text: "Win Rate", color: chartColors.axis }
+        }
+      }
+    };
+
     new Chart(document.getElementById("chartCumPnl"), {
       type: "line",
       data: {
@@ -442,15 +492,32 @@
     new Chart(document.getElementById("chartHour"), {
       type: "bar",
       data: {
-        labels: hourLabelsFriendly,
-        datasets: [{
-          data: hourValues,
-          backgroundColor: "rgba(17,17,17,0.75)",
-          borderRadius: 2,
-          maxBarThickness: 10,
-        }]
+        labels: intradayLabels,
+        datasets: [
+          {
+            type: "bar",
+            label: "Trades",
+            data: intradayTrades,
+            yAxisID: "y",
+            backgroundColor: "rgba(17,17,17,0.75)",
+            borderRadius: 3,
+            maxBarThickness: 16,
+          },
+          {
+            type: "line",
+            label: "Win Rate",
+            data: intradayWinRate,
+            yAxisID: "y1",
+            borderColor: chartColors.red,
+            backgroundColor: "rgba(225,37,27,0.15)",
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 2,
+            pointHoverRadius: 3,
+          }
+        ]
       },
-      options: commonOpts
+      options: hourOpts
     });
 
     new Chart(document.getElementById("chartWinLoss"), {

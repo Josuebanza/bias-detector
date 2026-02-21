@@ -293,6 +293,162 @@ def detect_revenge_trading(df: pd.DataFrame) -> BiasResult:
     return BiasResult(score=score, level=_level(score), signals=signals, tips=tips)
 
 # --------------------------
+# 4) FOMO TRADING
+# --------------------------
+def detect_fomo_trading(df: pd.DataFrame) -> BiasResult:
+    """FOMO signals:
+    - Entering quickly after large positive moves
+    - Larger risk on those entries vs baseline
+    - Weak quality after those entries (lower win rate)
+    """
+    if len(df) < 8:
+        return BiasResult(score=0, level="LOW", signals=[{"msg": "Not enough trades to assess FOMO reliably."}], tips=[])
+
+    d = add_features(df).sort_values("timestamp").reset_index(drop=True)
+    dt_minutes = (d["timestamp"] - d["timestamp"].shift(1)).dt.total_seconds().fillna(0) / 60.0
+
+    prev_pnl = d["pnl"].shift(1)
+    prev_abs_z = _zscore(d["abs_pnl"]).shift(1)
+    after_big_win_fast = (prev_pnl > 0) & (prev_abs_z > 1.3) & (dt_minutes <= 10)
+
+    trigger_rate = float(after_big_win_fast.mean())
+
+    risk = d["risk_pct_balance"]
+    risk_fomo = float(risk[after_big_win_fast].mean()) if after_big_win_fast.any() else 0.0
+    risk_base = float(risk[~after_big_win_fast].mean()) if (~after_big_win_fast).any() else 0.0
+    risk_ratio = (risk_fomo / risk_base) if risk_base > 0 else (1.0 if risk_fomo > 0 else 0.0)
+
+    win_rate_fomo = float((d.loc[after_big_win_fast, "pnl"] > 0).mean()) if after_big_win_fast.any() else 0.0
+    win_rate_base = float((d.loc[~after_big_win_fast, "pnl"] > 0).mean()) if (~after_big_win_fast).any() else 0.0
+    win_rate_gap = win_rate_base - win_rate_fomo
+
+    trigger_score = _clamp((trigger_rate - 0.05) * 700.0, 0.0, 55.0)
+    risk_score = _clamp((risk_ratio - 1.10) * 80.0, 0.0, 25.0)
+    quality_score = _clamp(win_rate_gap * 100.0 * 0.40, 0.0, 20.0)
+    score = _clamp(trigger_score + risk_score + quality_score)
+
+    signals = [
+        {"metric": "fast_entries_after_big_win_rate", "value": round(trigger_rate, 3)},
+        {"metric": "risk_ratio_on_fomo_entries", "value": round(risk_ratio, 3)},
+        {"metric": "win_rate_fomo_entries", "value": round(win_rate_fomo, 3)},
+        {"metric": "win_rate_baseline", "value": round(win_rate_base, 3)},
+    ]
+
+    tips = [
+        "After strong upside moves, wait for a predefined confirmation before entry.",
+        "Use fixed risk for momentum re-entries; never increase size because of urgency.",
+        "If a setup feels rushed, skip it and review after market close.",
+    ]
+
+    return BiasResult(score=score, level=_level(score), signals=signals, tips=tips)
+
+# --------------------------
+# 5) CONFIRMATION BIAS
+# --------------------------
+def detect_confirmation_bias(df: pd.DataFrame) -> BiasResult:
+    """Confirmation-bias signals:
+    - One-sided trading dominance (BUY or SELL)
+    - High concentration on one asset
+    - Repeating same thesis (side/asset) right after losses
+    """
+    if len(df) < 8:
+        return BiasResult(score=0, level="LOW", signals=[{"msg": "Not enough trades to assess confirmation bias reliably."}], tips=[])
+
+    d = add_features(df).sort_values("timestamp").reset_index(drop=True)
+    prev_loss = d["pnl"].shift(1) < 0
+
+    buy_share = float((d["side"] == "BUY").mean())
+    sell_share = float((d["side"] == "SELL").mean())
+    side_dominance = max(buy_share, sell_share)
+
+    asset_share = d["asset"].value_counts(normalize=True)
+    top_asset_share = float(asset_share.iloc[0]) if len(asset_share) else 0.0
+    top_asset = str(asset_share.index[0]) if len(asset_share) else "-"
+
+    same_side_after_loss = (d["side"] == d["side"].shift(1)) & prev_loss
+    same_asset_after_loss = (d["asset"] == d["asset"].shift(1)) & prev_loss
+
+    same_side_after_loss_rate = float(same_side_after_loss[prev_loss].mean()) if prev_loss.any() else 0.0
+    same_asset_after_loss_rate = float(same_asset_after_loss[prev_loss].mean()) if prev_loss.any() else 0.0
+
+    side_score = _clamp((side_dominance - 0.65) * 100.0, 0.0, 30.0)
+    concentration_score = _clamp((top_asset_share - 0.45) * 100.0, 0.0, 35.0)
+    same_side_score = _clamp((same_side_after_loss_rate - 0.55) * 120.0, 0.0, 20.0)
+    same_asset_score = _clamp((same_asset_after_loss_rate - 0.55) * 120.0, 0.0, 15.0)
+
+    score = _clamp(side_score + concentration_score + same_side_score + same_asset_score)
+
+    signals = [
+        {"metric": "side_dominance", "value": round(side_dominance, 3)},
+        {"metric": "top_asset", "value": top_asset},
+        {"metric": "top_asset_share", "value": round(top_asset_share, 3)},
+        {"metric": "same_side_after_loss_rate", "value": round(same_side_after_loss_rate, 3)},
+        {"metric": "same_asset_after_loss_rate", "value": round(same_asset_after_loss_rate, 3)},
+    ]
+
+    tips = [
+        "Force a counter-thesis before repeating the same direction.",
+        "Rotate watchlists and cap repeated entries on a single asset.",
+        "After a losing trade, pause and validate one disconfirming signal before re-entry.",
+    ]
+
+    return BiasResult(score=score, level=_level(score), signals=signals, tips=tips)
+
+def compute_risk_profile(df: pd.DataFrame) -> Dict[str, Any]:
+    """Compute an explicit risk profile from drawdown, volatility and consistency."""
+    if len(df) < 5:
+        return {
+            "score": 50.0,
+            "level": "BALANCED",
+            "max_drawdown_pct": 0.0,
+            "pnl_volatility": 0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "stability": 50.0,
+            "drawdown_resilience": 50.0,
+            "consistency": 50.0,
+        }
+
+    balance = df["balance"].astype(float)
+    running_max = balance.cummax().replace(0, np.nan)
+    drawdown_pct = ((running_max - balance) / running_max).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    max_drawdown_pct = float(drawdown_pct.max() * 100.0)
+
+    pnl = df["pnl"].astype(float)
+    pnl_volatility = float(pnl.std(ddof=0))
+    baseline_abs_pnl = float(pnl.abs().mean()) + 1e-9
+    vol_ratio = pnl_volatility / baseline_abs_pnl
+
+    win_rate = float((pnl > 0).mean() * 100.0)
+    wins = float(pnl[pnl > 0].sum())
+    losses_abs = abs(float(pnl[pnl <= 0].sum()))
+    profit_factor = (wins / losses_abs) if losses_abs > 0 else (2.0 if wins > 0 else 1.0)
+
+    stability = _clamp(100.0 - vol_ratio * 35.0, 0.0, 100.0)
+    drawdown_resilience = _clamp(100.0 - max_drawdown_pct * 1.8, 0.0, 100.0)
+    consistency = _clamp((win_rate * 0.55) + (_clamp(profit_factor * 40.0) * 0.45), 0.0, 100.0)
+
+    risk_score = _clamp((stability * 0.40) + (drawdown_resilience * 0.35) + (consistency * 0.25))
+    if risk_score >= 70:
+        risk_level = "CONSERVATIVE"
+    elif risk_score >= 45:
+        risk_level = "BALANCED"
+    else:
+        risk_level = "AGGRESSIVE"
+
+    return {
+        "score": round(risk_score, 1),
+        "level": risk_level,
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "pnl_volatility": round(pnl_volatility, 2),
+        "win_rate": round(win_rate, 2),
+        "profit_factor": round(float(profit_factor), 3),
+        "stability": round(float(stability), 1),
+        "drawdown_resilience": round(float(drawdown_resilience), 1),
+        "consistency": round(float(consistency), 1),
+    }
+
+# --------------------------
 # Aggregate
 # --------------------------
 def analyze_biases(df: pd.DataFrame) -> Dict[str, Any]:
@@ -300,8 +456,23 @@ def analyze_biases(df: pd.DataFrame) -> Dict[str, Any]:
     over = detect_overtrading(df)
     loss = detect_loss_aversion(df)
     rev = detect_revenge_trading(df)
+    fomo = detect_fomo_trading(df)
+    confirm = detect_confirmation_bias(df)
+    risk_profile = compute_risk_profile(df)
 
-    overall = _clamp((over.score*0.35 + loss.score*0.35 + rev.score*0.30))
+    overall = _clamp(
+        (over.score * 0.28)
+        + (loss.score * 0.24)
+        + (rev.score * 0.24)
+        + (fomo.score * 0.12)
+        + (confirm.score * 0.12)
+    )
+    all_bias_scores = [over.score, loss.score, rev.score, fomo.score, confirm.score]
+    high_count = sum(1 for s in all_bias_scores if s >= 75)
+    if max(all_bias_scores) >= 75 and overall < 45:
+        overall = 45.0
+    if high_count >= 2 and overall < 60:
+        overall = 60.0
 
     return {
         "overall": {"score": round(overall, 1), "level": _level(overall)},
@@ -309,7 +480,10 @@ def analyze_biases(df: pd.DataFrame) -> Dict[str, Any]:
             "overtrading": over.__dict__,
             "loss_aversion": loss.__dict__,
             "revenge_trading": rev.__dict__,
+            "fomo_trading": fomo.__dict__,
+            "confirmation_bias": confirm.__dict__,
         },
+        "risk_profile": risk_profile,
         "meta": {
             "n_trades": int(len(df)),
             "start": df["timestamp"].min().isoformat() if len(df) else None,
