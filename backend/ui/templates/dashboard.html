@@ -6,52 +6,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bias Detector Dashboard</title>
 
-  <!-- Bootstrap 5 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-
   <link rel="stylesheet" href="{% static 'styles.css' %}">
 </head>
-<body class="bg-soft">
-  <nav class="navbar navbar-expand-lg navbar-dark nb-nav shadow-sm">
+<body class="nb-body">
+  <nav class="navbar navbar-expand-lg nb-nav">
     <div class="container">
       <a class="navbar-brand fw-semibold" href="/">
         <span class="brand-dot"></span> Bias Detector
       </a>
       <div class="ms-auto d-flex gap-2 align-items-center">
-        <span class="badge rounded-pill text-bg-light">Batch: {{ batch_id|default:"—" }}</span>
-        <a class="btn btn-sm btn-outline-light" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
+        <span class="nav-batch">Batch: {{ batch_id|default:"-" }}</span>
+        <a class="btn btn-sm btn-nb-secondary" href="/api/analyze/?batch_id={{ batch_id|urlencode }}" target="_blank">
           API <i class="bi bi-box-arrow-up-right ms-1"></i>
         </a>
       </div>
     </div>
   </nav>
 
-  <main class="container my-4">
+  <main class="container py-4">
     {% if messages %}
-      <div class="mb-3">
+      <div class="mb-4">
         {% for message in messages %}
-          <div class="alert alert-{{ message.tags }} shadow-sm mb-2">{{ message }}</div>
+          <div class="alert nb-alert alert-{{ message.tags }} mb-2">{{ message }}</div>
         {% endfor %}
       </div>
     {% endif %}
 
-    <!-- Header -->
-    <div class="row g-3 align-items-stretch">
+    {% if not empty %}
+      <section class="nb-hero mb-4">
+        <div class="hero-kicker">Behavioral Profile</div>
+        <h1 class="hero-title">Behavioral Profile</h1>
+        <p class="hero-subtitle">Personalized trading behavior analysis</p>
+
+        <div class="hero-score-wrap">
+          <div class="hero-score-ring" style="--p:{{ analysis.overall.score|default:0 }}">
+            <div class="hero-score-inner">
+              <div class="hero-score-value">{{ analysis.overall.score|default:0|floatformat:1 }}</div>
+              {% with lvl=analysis.overall.level|default:'LOW' %}
+                <span class="state-badge state-{{ lvl|lower }}">
+                  {% if lvl == "LOW" %}Controlled{% elif lvl == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
+                </span>
+              {% endwith %}
+            </div>
+          </div>
+        </div>
+
+        <p class="hero-insight">{{ coach }}</p>
+        <p class="hero-meta">{{ n_trades }} trades analyzed | {{ start_display|default:start }} - {{ end_display|default:end }}</p>
+      </section>
+    {% else %}
+      <section class="nb-hero nb-hero-empty mb-4">
+        <div class="hero-kicker">Behavioral Profile</div>
+        <h1 class="hero-title">Behavioral Profile</h1>
+        <p class="hero-subtitle">Personalized trading behavior analysis</p>
+        <p class="hero-insight">Upload a trading file to generate your profile.</p>
+      </section>
+    {% endif %}
+
+    <div class="row g-4 mb-4 align-items-stretch">
       <div class="col-lg-7">
-        <div class="card card-soft shadow-sm h-100">
+        <div class="card nb-card h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start gap-3">
               <div>
-                <h2 class="h5 mb-1">Upload trading history</h2>
-                <p class="text-secondary mb-0">
-                  CSV/Excel with columns: <span class="code">timestamp, side, asset, quantity, entry_price, exit_price, pnl, balance</span>
+                <h2 class="section-title mb-1">Upload trading history</h2>
+                <p class="upload-copy mb-0">
+                  CSV/Excel with columns: <span class="code-pill">timestamp, side, asset, quantity, entry_price, exit_price, pnl, balance</span>
                 </p>
               </div>
               <div class="text-end">
-                <div class="small text-secondary">Dataset-ready</div>
+                <div class="section-meta">Dataset-ready</div>
                 <div class="fw-semibold">Fast rule engine</div>
               </div>
             </div>
@@ -64,79 +94,58 @@
                 <input class="form-control" type="file" name="file" accept=".csv,.xlsx,.xls" required>
               </div>
               <div class="col-md-4 d-grid">
-                <button class="btn btn-primary btn-nb" type="submit">
+                <button class="btn btn-nb-primary" type="submit">
                   Analyze <i class="bi bi-graph-up-arrow ms-1"></i>
                 </button>
               </div>
             </form>
 
-            <div class="mt-3 small text-secondary">
-              Tip: during judging, the dataset can be ~20× bigger—this app uses <b>bulk inserts</b> + <b>vectorized pandas</b>.
+            <div class="mt-3 small text-muted">
+              Tip: during judging, the dataset can be ~20x bigger. This app uses <b>bulk inserts</b> + <b>vectorized pandas</b>.
             </div>
           </div>
         </div>
       </div>
 
       <div class="col-lg-5">
-        <div class="card card-soft shadow-sm h-100">
+        <div class="card nb-card h-100">
           <div class="card-body">
-            <h2 class="h5 mb-2">Psychology snapshot</h2>
+            <h2 class="section-title mb-3">Behavioral Profile</h2>
 
             {% if empty %}
-              <div class="p-3 bg-body-tertiary rounded-3 border">
-                <div class="d-flex gap-2 align-items-center">
-                  <i class="bi bi-upload text-primary fs-4"></i>
-                  <div>
-                    <div class="fw-semibold">No trades loaded yet</div>
-                    <div class="text-secondary small">Upload one of the provided CSV files to start.</div>
-                  </div>
+              <div class="empty-state">
+                <i class="bi bi-upload"></i>
+                <div>
+                  <div class="fw-semibold">No trades loaded yet</div>
+                  <div class="small text-muted">Upload one of the provided CSV files to start.</div>
                 </div>
               </div>
             {% else %}
-              <div class="d-flex align-items-center gap-3">
-                <div class="ring" style="--p:{{ analysis.overall.score|default:0 }}">
-                  <div class="ring-inner">
-                    <div class="small text-secondary">Overall</div>
-                    <div class="display-6 fw-bold lh-1">{{ analysis.overall.score }}</div>
-                    <div class="badge text-bg-{{ analysis.overall.level|lower }} mt-1">{{ analysis.overall.level }}</div>
-                  </div>
-                </div>
-
-                <div class="flex-grow-1">
-                  <div class="text-secondary small mb-1">Coach</div>
-                  <div class="fw-semibold">{{ coach }}</div>
-                  <div class="text-secondary small mt-2">
-                    Trades: <b>{{ n_trades }}</b> · Window: <b>{{ start }}</b> → <b>{{ end }}</b>
-                  </div>
-                </div>
+              <div class="profile-lead mb-3">
+                <div class="section-meta">Performance Insight</div>
+                <div class="profile-text">{{ coach }}</div>
+                <div class="small text-muted mt-2">Window: {{ start_display|default:start }} - {{ end_display|default:end }}</div>
               </div>
 
-              <hr class="my-3">
-
-              <div class="row g-2">
-                {% for key,label,icon in
-                  ('overtrading','Overtrading','bi-lightning-charge'),
-                  ('loss_aversion','Loss aversion','bi-shield-exclamation'),
-                  ('revenge_trading','Revenge trading','bi-fire')
-                %}
-                {% with b=analysis.biases[key] %}
-                  <div class="col-12">
-                    <div class="mini-card">
-                      <div class="d-flex justify-content-between align-items-center">
-                        <div class="d-flex gap-2 align-items-center">
-                          <i class="bi {{ icon }} text-primary"></i>
-                          <div class="fw-semibold">{{ label }}</div>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                          <span class="badge text-bg-{{ b.level|lower }}">{{ b.level }}</span>
-                          <span class="fw-semibold">{{ b.score|floatformat:1 }}</span>
-                        </div>
-                      </div>
-                      <div class="progress mt-2" style="height: 8px;">
-                        <div class="progress-bar" role="progressbar" style="width: {{ b.score }}%"></div>
+              <div class="bias-list">
+                {% for card in bias_snapshot_cards %}
+                {% with b=card.bias %}
+                {% with lvl=b.level|default:'LOW' %}
+                  <div class="bias-card">
+                    <div class="bias-head">
+                      <div class="bias-title"><i class="bi {{ card.icon }}"></i> {{ card.label }}</div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="state-badge state-{{ lvl|lower }}">
+                          {% if lvl == "LOW" %}Controlled{% elif lvl == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
+                        </span>
+                        <span class="bias-score">{{ b.score|default:0|floatformat:1 }}</span>
                       </div>
                     </div>
+                    <div class="bias-track">
+                      <div class="bias-fill bias-{{ lvl|lower }}" style="width: {{ b.score|default:0 }}%"></div>
+                    </div>
                   </div>
+                {% endwith %}
                 {% endwith %}
                 {% endfor %}
               </div>
@@ -147,75 +156,123 @@
     </div>
 
     {% if not empty %}
-    <!-- Charts -->
-    <div class="row g-3 mt-1">
-      <div class="col-lg-8">
-        <div class="card card-soft shadow-sm">
+    <div class="row g-4 mb-4">
+      <div class="col-12">
+        <div class="card nb-card">
           <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <h3 class="h6 mb-0">Equity curve (cum P/L)</h3>
-              <span class="text-secondary small">Last 200 trades</span>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h3 class="section-title mb-0">Behavioral Control Index</h3>
+              <span class="section-meta">Control and stability metrics</span>
             </div>
-            <canvas id="chartCumPnl" height="110" class="mt-2"></canvas>
-          </div>
-        </div>
-      </div>
 
-      <div class="col-lg-4">
-        <div class="card card-soft shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <h3 class="h6 mb-0">Trade bursts</h3>
-              <span class="text-secondary small">By hour</span>
-            </div>
-            <canvas id="chartHour" height="160" class="mt-2"></canvas>
-          </div>
-        </div>
-      </div>
+            <div id="behavioralControlIndex" class="control-list"
+              data-over="{{ analysis.biases.overtrading.score|default:0 }}"
+              data-loss="{{ analysis.biases.loss_aversion.score|default:0 }}"
+              data-revenge="{{ analysis.biases.revenge_trading.score|default:0 }}">
 
-      <div class="col-lg-6">
-        <div class="card card-soft shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <h3 class="h6 mb-0">Balance</h3>
-              <span class="text-secondary small">Last 200 points</span>
-            </div>
-            <canvas id="chartBalance" height="120" class="mt-2"></canvas>
-          </div>
-        </div>
-      </div>
+              <div class="control-row" data-metric="impulse">
+                <div class="control-head">
+                  <span>Impulse Sensitivity</span>
+                  <span class="control-value">0.0</span>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+              </div>
 
-      <div class="col-lg-6">
-        <div class="card card-soft shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <h3 class="h6 mb-0">Win vs Loss distribution</h3>
-              <span class="text-secondary small">Up to 500 samples</span>
+              <div class="control-row" data-metric="discipline">
+                <div class="control-head">
+                  <span>Trading Discipline</span>
+                  <span class="control-value">0.0</span>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+              </div>
+
+              <div class="control-row" data-metric="loss_control">
+                <div class="control-head">
+                  <span>Loss Control</span>
+                  <span class="control-value">0.0</span>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+              </div>
+
+              <div class="control-row" data-metric="stability">
+                <div class="control-head">
+                  <span>Emotional Stability</span>
+                  <span class="control-value">0.0</span>
+                </div>
+                <div class="control-track"><div class="control-fill"></div></div>
+              </div>
             </div>
-            <canvas id="chartWinLoss" height="120" class="mt-2"></canvas>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Recommendations -->
-    <div class="row g-3 mt-1">
-      <div class="col-12">
-        <div class="card card-soft shadow-sm">
+    <div class="row g-4 mb-4">
+      <div class="col-lg-8">
+        <div class="card nb-card chart-card h-100">
           <div class="card-body">
-            <h3 class="h6">Personalized next steps</h3>
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="section-title mb-0">Equity curve (cum P/L)</h3>
+              <span class="section-meta">Last 200 trades</span>
+            </div>
+            <canvas id="chartCumPnl" height="120" class="mt-3"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card nb-card chart-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="section-title mb-0">Trading Activity Peaks</h3>
+              <span class="section-meta">By hour</span>
+            </div>
+            <canvas id="chartHour" height="120" class="mt-3"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card nb-card chart-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="section-title mb-0">Balance</h3>
+              <span class="section-meta">Last 200 points</span>
+            </div>
+            <canvas id="chartBalance" height="120" class="mt-3"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card nb-card chart-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="section-title mb-0">Gain/Loss Distribution</h3>
+              <span class="section-meta">Up to 500 samples</span>
+            </div>
+            <canvas id="chartWinLoss" height="120" class="mt-3"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-2">
+      <div class="col-12">
+        <div class="card nb-card">
+          <div class="card-body">
+            <h3 class="section-title mb-3">Risk Safeguards</h3>
             <div class="row g-3">
-              {% for key,title in
-                ('overtrading','Overtrading discipline'),
-                ('loss_aversion','Loss aversion fixes'),
-                ('revenge_trading','Revenge trading guardrails')
-              %}
-              {% with b=analysis.biases[key] %}
+              {% for card in recommendation_cards %}
+              {% with b=card.bias %}
+              {% with lvl=b.level|default:'LOW' %}
                 <div class="col-lg-4">
-                  <div class="p-3 bg-white rounded-3 border h-100">
+                  <div class="safeguard-card h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="fw-semibold">{{ title }}</div>
-                      <span class="badge text-bg-{{ b.level|lower }}">{{ b.level }}</span>
+                      <div class="fw-semibold">{{ card.title }}</div>
+                      <span class="state-badge state-{{ lvl|lower }}">
+                        {% if lvl == "LOW" %}Controlled{% elif lvl == "MEDIUM" %}Moderate{% else %}Elevated{% endif %}
+                      </span>
                     </div>
 
                     <ul class="mb-0 small">
@@ -225,6 +282,7 @@
                     </ul>
                   </div>
                 </div>
+              {% endwith %}
               {% endwith %}
               {% endfor %}
             </div>
@@ -251,6 +309,7 @@
 
   <script>
     function elJson(id){ return JSON.parse(document.getElementById(id).textContent); }
+    function clamp(v, lo = 0, hi = 100){ return Math.max(lo, Math.min(hi, v)); }
 
     {% if not empty %}
     const cumPnlLabels = elJson("cumPnlLabels");
@@ -262,38 +321,148 @@
     const winValues = elJson("winValues");
     const lossValues = elJson("lossValues");
 
+    const fmtDateTime = new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const fmtHour = new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+    });
+
+    function toFriendlyLabel(value, granularity){
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return granularity === "hour" ? fmtHour.format(d) : fmtDateTime.format(d);
+    }
+
+    const cumPnlLabelsFriendly = cumPnlLabels.map(v => toFriendlyLabel(v, "minute"));
+    const balanceLabelsFriendly = balanceLabels.map(v => toFriendlyLabel(v, "minute"));
+    const hourLabelsFriendly = hourLabels.map(v => toFriendlyLabel(v, "hour"));
+
+    const indexRoot = document.getElementById("behavioralControlIndex");
+    if (indexRoot) {
+      const over = Number.parseFloat(indexRoot.dataset.over || "0") || 0;
+      const loss = Number.parseFloat(indexRoot.dataset.loss || "0") || 0;
+      const revenge = Number.parseFloat(indexRoot.dataset.revenge || "0") || 0;
+
+      const metrics = {
+        impulse: clamp(revenge),
+        discipline: clamp(100 - over),
+        loss_control: clamp(100 - loss),
+        stability: clamp(100 - ((revenge + loss) / 2)),
+      };
+
+      indexRoot.querySelectorAll(".control-row").forEach((row) => {
+        const metricKey = row.dataset.metric;
+        const value = metrics[metricKey] ?? 0;
+        const fill = row.querySelector(".control-fill");
+        const valueEl = row.querySelector(".control-value");
+        fill.style.width = `${value.toFixed(1)}%`;
+        fill.classList.toggle("is-alert", value > 70);
+        valueEl.textContent = value.toFixed(1);
+      });
+    }
+
+    const chartColors = {
+      red: "#E1251B",
+      dark: "#111111",
+      axis: "#6B7280",
+      grid: "rgba(17, 17, 17, 0.08)",
+      tooltipBg: "#111111",
+      tooltipBorder: "#2B2B2B",
+    };
+
     const commonOpts = {
       responsive: true,
-      plugins: { legend: { display: false } },
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: chartColors.tooltipBg,
+          borderColor: chartColors.tooltipBorder,
+          borderWidth: 1,
+          titleColor: "#F9FAFB",
+          bodyColor: "#F9FAFB",
+          padding: 10,
+          displayColors: false,
+        }
+      },
       scales: {
-        x: { ticks: { maxTicksLimit: 6 } },
-        y: { ticks: { maxTicksLimit: 5 } }
+        x: {
+          grid: { display: false },
+          ticks: { color: chartColors.axis, maxTicksLimit: 6 }
+        },
+        y: {
+          grid: { color: chartColors.grid, drawBorder: false },
+          ticks: { color: chartColors.axis, maxTicksLimit: 5 }
+        }
       }
     };
 
     new Chart(document.getElementById("chartCumPnl"), {
       type: "line",
-      data: { labels: cumPnlLabels, datasets: [{ data: cumPnlValues, tension: 0.25, pointRadius: 0 }] },
+      data: {
+        labels: cumPnlLabelsFriendly,
+        datasets: [{
+          data: cumPnlValues,
+          borderColor: chartColors.dark,
+          backgroundColor: "rgba(17,17,17,0.08)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          fill: false,
+        }]
+      },
       options: commonOpts
     });
 
     new Chart(document.getElementById("chartBalance"), {
       type: "line",
-      data: { labels: balanceLabels, datasets: [{ data: balanceValues, tension: 0.25, pointRadius: 0 }] },
+      data: {
+        labels: balanceLabelsFriendly,
+        datasets: [{
+          data: balanceValues,
+          borderColor: chartColors.red,
+          backgroundColor: "rgba(225,37,27,0.10)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          fill: false,
+        }]
+      },
       options: commonOpts
     });
 
     new Chart(document.getElementById("chartHour"), {
       type: "bar",
-      data: { labels: hourLabels, datasets: [{ data: hourValues }] },
+      data: {
+        labels: hourLabelsFriendly,
+        datasets: [{
+          data: hourValues,
+          backgroundColor: "rgba(17,17,17,0.75)",
+          borderRadius: 2,
+          maxBarThickness: 10,
+        }]
+      },
       options: commonOpts
     });
 
     new Chart(document.getElementById("chartWinLoss"), {
       type: "bar",
       data: {
-        labels: ["Wins", "Losses"],
-        datasets: [{ data: [winValues.length, lossValues.length] }]
+        labels: ["Gains", "Losses"],
+        datasets: [{
+          data: [winValues.length, lossValues.length],
+          backgroundColor: ["rgba(17,17,17,0.85)", "rgba(225,37,27,0.85)"],
+          borderRadius: 4,
+          maxBarThickness: 70,
+        }]
       },
       options: commonOpts
     });

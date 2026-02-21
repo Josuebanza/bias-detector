@@ -67,32 +67,65 @@ def dashboard(request):
     analysis = analyze_biases(df)
     analysis = merge_tips(analysis)
     coach = coaching_message(analysis)
+    biases = analysis.get("biases", {})
+
+    bias_snapshot_cards = [
+        {"label": "Overtrading", "icon": "bi-lightning-charge", "bias": biases.get("overtrading", {})},
+        {"label": "Loss aversion", "icon": "bi-shield-exclamation", "bias": biases.get("loss_aversion", {})},
+        {"label": "Revenge trading", "icon": "bi-fire", "bias": biases.get("revenge_trading", {})},
+    ]
+    recommendation_cards = [
+        {"title": "Overtrading discipline", "bias": biases.get("overtrading", {})},
+        {"title": "Loss aversion fixes", "bias": biases.get("loss_aversion", {})},
+        {"title": "Revenge trading guardrails", "bias": biases.get("revenge_trading", {})},
+    ]
 
     # Charts
     pnl_series = df[["timestamp","pnl"]].copy()
     pnl_series["cum_pnl"] = pnl_series["pnl"].cumsum()
 
-    by_hour = df.groupby(df["timestamp"].dt.floor("H")).size()
-    hour_labels = [t.isoformat() for t in by_hour.index.to_list()[-60:]]
-    hour_values = by_hour.values.tolist()[-60:]
+    intraday = (
+        df.assign(hour_of_day=df["timestamp"].dt.hour)
+        .groupby("hour_of_day")
+        .agg(
+            trades=("pnl", "size"),
+            win_rate=("pnl", lambda s: (s > 0).mean() * 100.0),
+            avg_pnl=("pnl", "mean"),
+        )
+        .reindex(range(24), fill_value=0.0)
+    )
+    intraday_labels = [f"{h:02d}:00" for h in intraday.index.tolist()]
+    intraday_trades = [int(v) for v in intraday["trades"].tolist()]
+    intraday_win_rate = [round(float(v), 2) for v in intraday["win_rate"].tolist()]
+    intraday_avg_pnl = [round(float(v), 2) for v in intraday["avg_pnl"].tolist()]
 
     win = df[df["pnl"] > 0]["pnl"].tolist()[:500]
     loss = df[df["pnl"] <= 0]["pnl"].tolist()[:500]
+    start_ts = df["timestamp"].min()
+    end_ts = df["timestamp"].max()
+    start_display = start_ts.strftime("%d/%m/%Y %H:%M")
+    end_display = end_ts.strftime("%d/%m/%Y %H:%M")
 
     context = {
         "empty": False,
         "batch_id": batch_id,
         "analysis": analysis,
+        "bias_snapshot_cards": bias_snapshot_cards,
+        "recommendation_cards": recommendation_cards,
         "coach": coach,
         "n_trades": len(df),
         "start": analysis["meta"]["start"],
         "end": analysis["meta"]["end"],
+        "start_display": start_display,
+        "end_display": end_display,
         "chart_cum_pnl_labels": [t.isoformat() for t in pnl_series["timestamp"].tolist()[-200:]],
         "chart_cum_pnl_values": pnl_series["cum_pnl"].tolist()[-200:],
         "chart_balance_labels": [t.isoformat() for t in df["timestamp"].tolist()[-200:]],
         "chart_balance_values": df["balance"].tolist()[-200:],
-        "chart_hour_labels": hour_labels,
-        "chart_hour_values": hour_values,
+        "chart_intraday_labels": intraday_labels,
+        "chart_intraday_trades": intraday_trades,
+        "chart_intraday_win_rate": intraday_win_rate,
+        "chart_intraday_avg_pnl": intraday_avg_pnl,
         "win_values": win,
         "loss_values": loss,
     }

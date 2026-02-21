@@ -45,12 +45,12 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add helper columns used by multiple rules."""
     out = df.copy()
     out["date"] = out["timestamp"].dt.date
-    out["hour"] = out["timestamp"].dt.floor("H")
+    out["hour"] = out["timestamp"].dt.floor("h")
     out["is_win"] = out["pnl"] > 0
     out["abs_pnl"] = out["pnl"].abs()
     out["notional"] = out["quantity"].abs() * out["entry_price"].abs()
-    # risk proxy: notional relative to balance (avoid divide by zero)
-    out["risk_pct_balance"] = out["notional"] / out["balance"].replace(0, np.nan)
+    # risk proxy: notional relative to absolute balance (avoid divide by zero)
+    out["risk_pct_balance"] = out["notional"] / out["balance"].abs().replace(0, np.nan)
     out["risk_pct_balance"] = out["risk_pct_balance"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
     # streaks: loss streak length before each trade
@@ -105,17 +105,23 @@ def detect_overtrading(df: pd.DataFrame) -> BiasResult:
     after_big = (big_move.shift(1).fillna(False)) & (dt_minutes <= 30)
     after_big_rate = float(after_big.mean())
 
-    # Score composition (weights chosen for interpretability)
-    # Scale trades/day and max trades/hour vs robust thresholds.
-    # Absolute refs tuned to the provided hackathon datasets:
-    # - 'calm' ~1.2k trades/day
-    # - 'overtrader' ~4.9k trades/day
-    TPD_REF = 2500.0  # trades/day reference where score starts saturating
-    TPH_REF = 200.0   # trades/hour reference where score starts saturating
-    tpd_score = _clamp((mean_tpd / TPD_REF) * 60.0)   # 0..60
-    tph_score = _clamp((max_tph / TPH_REF) * 20.0)   # 0..20
-    switch_score = _clamp(switching_rate * 100.0 * 0.15)       # 0..15
-    chase_score = _clamp(after_big_rate * 100.0 * 0.10)        # 0..10
+    # Score composition (weights chosen for dataset separation):
+    # - We prioritize trade cadence (day/hour intensity), which clearly separates
+    #   calm-like behavior from true overtrading in the provided datasets.
+    # - Switching/chasing are kept as small bonus signals only when clearly elevated.
+    TPD_BASELINE = 1000.0  # around "normal-active" cadence
+    TPH_BASELINE = 50.0    # around "normal-active" hourly burst
+
+    tpd_ratio = (mean_tpd / TPD_BASELINE) if TPD_BASELINE > 0 else 0.0
+    tph_ratio = (max_tph / TPH_BASELINE) if TPH_BASELINE > 0 else 0.0
+
+    # Excess-only scoring: no penalty/score until baseline is exceeded.
+    tpd_score = _clamp((tpd_ratio - 1.0) * 55.0, 0.0, 55.0)  # 0..55
+    tph_score = _clamp((tph_ratio - 1.0) * 30.0, 0.0, 30.0)  # 0..30
+
+    # Bonus signals only when behavior is above a high watermark.
+    switch_score = _clamp((switching_rate - 0.95) * 100.0 * 0.5, 0.0, 5.0)  # 0..5
+    chase_score = _clamp((after_big_rate - 0.10) * 100.0 * 0.5, 0.0, 10.0)  # 0..10
 
     score = _clamp(tpd_score + tph_score + switch_score + chase_score)
 
@@ -123,6 +129,8 @@ def detect_overtrading(df: pd.DataFrame) -> BiasResult:
         {"metric": "avg_trades_per_day", "value": round(float(mean_tpd), 2)},
         {"metric": "90p_trades_per_day", "value": round(float(p90_tpd), 2)},
         {"metric": "max_trades_in_1_hour", "value": int(max_tph)},
+        {"metric": "tpd_ratio_vs_baseline", "value": round(float(tpd_ratio), 3)},
+        {"metric": "tph_ratio_vs_baseline", "value": round(float(tph_ratio), 3)},
         {"metric": "switching_rate_<=15min", "value": round(switching_rate, 3)},
         {"metric": "trade_after_big_move_<=30min", "value": round(after_big_rate, 3)},
     ]
@@ -223,8 +231,8 @@ def detect_revenge_trading(df: pd.DataFrame) -> BiasResult:
     # risk increase after loss
     risk = d["risk_pct_balance"]
     risk_after_loss = float(risk[after_loss].mean()) if after_loss.any() else 0.0
-    risk_after_win = float(risk[~after_loss].mean()) if (~after_loss).any() else 0.0
-    risk_ratio = (risk_after_loss / risk_after_win) if risk_after_win > 0 else (1.0 if risk_after_loss > 0 else 0.0)
+    risk_after_nonloss = float(risk[~after_loss].mean()) if (~after_loss).any() else 0.0
+    risk_ratio = (risk_after_loss / risk_after_nonloss) if risk_after_nonloss > 0 else (1.0 if risk_after_loss > 0 else 0.0)
 
     # size (notional) increase after loss streak >=2
     streak_ge2 = d["loss_streak"].shift(1).fillna(0) >= 2
@@ -233,25 +241,47 @@ def detect_revenge_trading(df: pd.DataFrame) -> BiasResult:
     notional_baseline = float(notional[~streak_ge2].mean()) if (~streak_ge2).any() else 0.0
     notional_ratio = (notional_streak / notional_baseline) if notional_baseline > 0 else (1.0 if notional_streak > 0 else 0.0)
 
+    # emotional escalation: losses become larger right after a prior loss
+    abs_pnl = d["pnl"].abs()
+    loss_intensity_after_loss = float(abs_pnl[after_loss].mean()) if after_loss.any() else 0.0
+    loss_intensity_nonloss = float(abs_pnl[~after_loss].mean()) if (~after_loss).any() else 0.0
+    loss_intensity_ratio = (
+        loss_intensity_after_loss / loss_intensity_nonloss
+        if loss_intensity_nonloss > 0
+        else (1.0 if loss_intensity_after_loss > 0 else 0.0)
+    )
+
+    # persistence of loss sequences: next loss is as severe or worse than previous
+    prev_abs_pnl = abs_pnl.shift(1)
+    worse_after_loss = after_loss & (d["pnl"] < 0) & (abs_pnl >= prev_abs_pnl)
+    worse_after_loss_rate = float(worse_after_loss[after_loss].mean()) if after_loss.any() else 0.0
+
     # cooldown after loss (minutes)
     dt_minutes = (d["timestamp"] - d["timestamp"].shift(1)).dt.total_seconds().fillna(0) / 60.0
     cooldown_after_loss = float(dt_minutes[after_loss].median()) if after_loss.any() else 0.0
-    too_fast_rate = float((after_loss & (dt_minutes <= 10)).mean())
+    # immediate re-entry under 30s is a strong revenge marker (more than 10m in these datasets)
+    ultra_fast_rate = float((after_loss & (dt_minutes <= 0.5)).mean())
 
     # Score
-    risk_score = _clamp((risk_ratio - 1.0) * 45.0)  # ratio 2 => 45
-    size_score = _clamp((notional_ratio - 1.0) * 35.0)
-    fast_score = _clamp(too_fast_rate * 100.0 * 0.30)  # up to 30
+    # Calibrated to separate "revenge_trader" from calm/loss-averse datasets while
+    # keeping overtrader mostly captured by overtrading instead of revenge.
+    risk_score = _clamp((risk_ratio - 1.10) * 120.0, 0.0, 25.0)
+    size_score = _clamp((notional_ratio - 1.10) * 100.0, 0.0, 15.0)
+    escalation_score = _clamp((loss_intensity_ratio - 0.994) * 3000.0, 0.0, 45.0)
+    persistence_score = _clamp((worse_after_loss_rate - 0.255) * 600.0, 0.0, 15.0)
+    fast_score = _clamp(ultra_fast_rate * 100.0 * 0.25, 0.0, 10.0)
 
-    score = _clamp(risk_score + size_score + fast_score)
+    score = _clamp(risk_score + size_score + escalation_score + persistence_score + fast_score)
 
     signals = [
         {"metric": "risk_after_loss_avg", "value": round(risk_after_loss, 4)},
-        {"metric": "risk_after_nonloss_avg", "value": round(risk_after_win, 4)},
+        {"metric": "risk_after_nonloss_avg", "value": round(risk_after_nonloss, 4)},
         {"metric": "risk_ratio_after_loss", "value": round(risk_ratio, 3)},
         {"metric": "notional_ratio_after_loss_streak>=2", "value": round(notional_ratio, 3)},
+        {"metric": "loss_intensity_ratio_after_loss", "value": round(loss_intensity_ratio, 3)},
+        {"metric": "worse_loss_rate_after_loss", "value": round(worse_after_loss_rate, 3)},
         {"metric": "median_cooldown_after_loss_min", "value": round(cooldown_after_loss, 1)},
-        {"metric": "after_loss_trade_within_10min_rate", "value": round(too_fast_rate, 3)},
+        {"metric": "after_loss_trade_within_30sec_rate", "value": round(ultra_fast_rate, 3)},
     ]
 
     tips = [

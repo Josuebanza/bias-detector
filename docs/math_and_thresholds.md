@@ -38,19 +38,30 @@ Signals computed on the dataset:
 - Group by day: \(tpd_d\)
 - Mean trades/day: \(\overline{tpd}\)
 - 90th percentile: \(tpd_{0.9}\)
+- Baseline cadence: \(TPD_{base} = 1000\)
+
+Define:
+\[
+tpd\_ratio = \frac{\overline{tpd}}{TPD_{base}}
+\]
 
 Score component:
 \[
-tpd\_score = clamp\left( \frac{\overline{tpd}}{max(1, tpd_{0.9})} \times 60 \right)
+tpd\_score = clamp\left( (tpd\_ratio - 1) \times 55,\; 0,\; 55 \right)
 \]
 
 2. **Hourly clustering**
 - Group by hour: \(tph_h\)
 - Max trades in an hour: \(max\_tph\)
 - 90th percentile: \(tph_{0.9}\)
+- Baseline burst: \(TPH_{base} = 50\)
 
 \[
-tph\_score = clamp\left( \frac{max\_tph}{max(1, tph_{0.9})} \times 20 \right)
+tph\_ratio = \frac{max\_tph}{TPH_{base}}
+\]
+
+\[
+tph\_score = clamp\left( (tph\_ratio - 1) \times 30,\; 0,\; 30 \right)
 \]
 
 3. **Rapid switching rate**
@@ -60,7 +71,7 @@ Switching = (asset changes OR side changes) AND \(\Delta t \le 15\) minutes.
 switching\_rate = mean( switching\_event_i )
 \]
 \[
-switch\_score = clamp\left( switching\_rate \times 100 \times 0.15 \right)
+switch\_score = clamp\left( (switching\_rate - 0.95) \times 100 \times 0.5,\; 0,\; 5 \right)
 \]
 
 4. **Chasing after big move**
@@ -71,7 +82,7 @@ Then “after big” = previous trade is big move AND \(\Delta t \le 30\) minute
 after\_big\_rate = mean(after\_big\_event_i)
 \]
 \[
-chase\_score = clamp\left( after\_big\_rate \times 100 \times 0.10 \right)
+chase\_score = clamp\left( (after\_big\_rate - 0.10) \times 100 \times 0.5,\; 0,\; 10 \right)
 \]
 
 **Final overtrading score**
